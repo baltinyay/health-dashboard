@@ -8,7 +8,7 @@ from supabase import create_client
 # SUPABASE BAĞLANTISI
 # ==========================================
 SUPABASE_URL = "https://lmmhcfqchbirklgrwwtj.supabase.co"
-SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "sb_publishable_Jx5FvqBOVqBvzplgU0ZE-A_35Yy2xxf")
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "sb_publishable_UTjaW9pbPjw0cyLFQqpT_g_Bs30WwxD")
 
 @st.cache_resource(ttl=60)
 def init_supabase():
