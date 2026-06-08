@@ -8,7 +8,6 @@ from supabase import create_client
 # SUPABASE BAĞLANTISI
 # ==========================================
 SUPABASE_URL = "https://lmmhcfqchbirklgrwwtj.supabase.co"
-# Güvenlik notu: Şifre normalde st.secrets'tan çekilir, test için default değer bırakıldı.
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "sb_publishable_Jx5FvqBOVqBvzplgU0ZE-A_35Yy2xxf")
 
 @st.cache_resource(ttl=60)
@@ -32,7 +31,6 @@ def sb_select(tablo, tarih=None):
         response = q.execute()
         return response.data or []
     except Exception as e:
-        # Eğer tablo henüz oluşturulmadıysa hata vermesini engelliyoruz
         return []
 
 # ==========================================
@@ -117,7 +115,6 @@ def get_gun_data(tarih):
     ogun_rows = sb_select("ogunler", tarih)
     ant_rows = sb_select("antrenmanlar", tarih)
 
-    # Supabase'de bu güne ait hiç veri yoksa dummy göster
     if not olcum and not ogun_rows and not ant_rows:
         return _dummy_gun()
 
@@ -258,4 +255,28 @@ with tab4:
     scols = st.columns(3)
     for i, s in enumerate(SUPPS):
         with scols[i % 3]:
-            st.checkbox(s, value
+            st.checkbox(s, value=(s in ["Whey", "D Vitamini", "Omega 3", "Kreatin"]), key=f"supp_{s}")
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.caption("İşaretlediğin supplementler seçili güne kaydedilecek (Supabase bağlanınca aktif olur).")
+
+# ----- TAB 5: TAHLİL -----
+with tab5:
+    secim = st.selectbox("Tahlil dönemi", list(TAHLILLER.keys()))
+    t = TAHLILLER[secim]
+
+    toplam = len(t["degerler"])
+    anormal = sum(1 for *_, d in t["degerler"] if d != "ok")
+    scol = st.columns(3)
+    scol[0].markdown(f"<div class='kpi'><div class='kpi-label'>Toplam parametre</div><div class='kpi-val'>{toplam}</div></div>", unsafe_allow_html=True)
+    scol[1].markdown(f"<div class='kpi'><div class='kpi-label'>Normal aralıkta</div><div class='kpi-val good'>{toplam - anormal}</div></div>", unsafe_allow_html=True)
+    scol[2].markdown(f"<div class='kpi'><div class='kpi-label'>Dikkat gerektiren</div><div class='kpi-val {'bad' if anormal else 'good'}'>{anormal}</div></div>", unsafe_allow_html=True)
+
+    st.write("")
+    st.markdown("<div class='card'><div class='card-title'>🩸 Biyomarker paneli (tamamı)</div>", unsafe_allow_html=True)
+    lcols = st.columns(3)
+    for i, (ad, val, ref, durum) in enumerate(t["degerler"]):
+        with lcols[i % 3]:
+            st.markdown(f"<div class='lab-item'><div class='lab-name'>{ad}</div><div class='lab-val {durum}'>{val}</div><div class='lab-ref'>ref: {ref}</div></div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='card'><div class='card-title'>📋 Klinik notlar</div><div class='yorum warn'>{t['not']}</div></div>", unsafe_allow_html=True)
+    st.caption("Tahlil PDF'lerini yükledikçe değerler otomatik buraya işlenecek (Supabase bağlanınca).")
