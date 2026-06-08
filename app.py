@@ -114,17 +114,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- TEŞHİS PANELİ (sorun çözülünce silinecek) ---
-with st.expander("🔧 Bağlantı teşhisi (geçici)"):
-    st.write("Supabase bağlantısı:", "✅ kuruldu" if sb else "❌ kurulamadı")
-    if sb:
-        try:
-            raw = sb.table("gunluk_olcum").select("*").execute()
-            st.write("Ham sorgu sonucu satır sayısı:", len(raw.data or []))
-            st.json(raw.data)
-        except Exception as e:
-            st.error(f"Sorgu hatası: {type(e).__name__}: {e}")
-
 
 # ==========================================
 # VERİ ÇEKME (önce Supabase, yoksa dummy)
