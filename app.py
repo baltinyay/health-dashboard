@@ -333,15 +333,17 @@ with tab1:
                     f"<div class='yorum {y['tip']}'>{y['metin']}</div></div>", unsafe_allow_html=True)
 
     st.markdown("<div class='card'><div class='card-title'>📈 Kilo trendi</div>", unsafe_allow_html=True)
+    eksen = alt.Axis(labelColor="#888780", titleColor="#888780", gridColor="#E0E0E0", domainColor="#B4B2A9", tickColor="#B4B2A9")
     base = alt.Chart(KILO_TREND).encode(
-        x=alt.X("Tarih:T", title=None),
-        y=alt.Y("Kilo:Q", scale=alt.Scale(domain=[93, 96]), title="kg"),
+        x=alt.X("Tarih:T", title=None, axis=eksen),
+        y=alt.Y("Kilo:Q", scale=alt.Scale(domain=[93, 96]), title="kg", axis=eksen),
     )
     line = base.mark_line(point=alt.OverlayMarkDef(color="#1D9E75", size=60), color="#1D9E75")
-    labels = base.mark_text(dy=-12, fontSize=11, color="#1A1A1A", fontWeight=600).encode(
+    labels = base.mark_text(dy=-12, fontSize=11, color="#1D9E75", fontWeight=600).encode(
         text=alt.Text("Kilo:Q", format=".1f")
     )
-    st.altair_chart((line + labels).properties(height=260), use_container_width=True)
+    chart = (line + labels).properties(height=260).configure_view(strokeWidth=0).configure(background="transparent")
+    st.altair_chart(chart, use_container_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='card'><div class='card-title'>📉 Akıllı tartı detayları</div>", unsafe_allow_html=True)
