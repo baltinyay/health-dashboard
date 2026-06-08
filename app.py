@@ -49,10 +49,10 @@ st.markdown("""
 
     /* Makro bar */
     .mbar-wrap { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-    .mbar-label { font-size: 13px; color: #6B6B6B; width: 110px; }
+    .mbar-label { font-size: 13px; color: #6B6B6B; width: 110px; flex-shrink: 0; }
     .mbar-track { flex: 1; height: 8px; background: #F0F0EE; border-radius: 5px; overflow: hidden; }
-    .mbar-fill { height: 100%; border-radius: 5px; }
-    .mbar-val { font-size: 13px; color: #1A1A1A; width: 70px; text-align: right; }
+    .mbar-fill { height: 8px; border-radius: 5px; }
+    .mbar-val { font-size: 13px; color: #1A1A1A; width: 70px; text-align: right; flex-shrink: 0; }
 
     /* Öğün kartı */
     .ogun {
@@ -229,20 +229,24 @@ with tab1:
     st.write("")
     left, right = st.columns(2)
     with left:
-        st.markdown("<div class='card'><div class='card-title'>📊 Makro durumu</div>", unsafe_allow_html=True)
         bars = [
             ("Protein", gun["protein"], HEDEF["protein"], "#1D9E75"),
             ("Karbonhidrat", gun["karb"], HEDEF["karb"], "#378ADD"),
             ("Yağ", gun["yag"], HEDEF["yag"], "#BA7517"),
             ("Kalori", gun["kalori"], HEDEF["kalori"], "#D85A30"),
         ]
+        bar_html = "<div class='card'><div class='card-title'>📊 Makro durumu</div>"
         for ad, val, mx, renk in bars:
             pct = min(100, round(val / mx * 100))
-            st.markdown(
-                f"<div class='mbar-wrap'><span class='mbar-label'>{ad}</span>"
-                f"<span class='mbar-track'><span class='mbar-fill' style='width:{pct}%;background:{renk}'></span></span>"
-                f"<span class='mbar-val'>{val}</span></div>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+            bar_html += (
+                f"<div class='mbar-wrap'>"
+                f"<div class='mbar-label'>{ad}</div>"
+                f"<div class='mbar-track'><div class='mbar-fill' style='width:{pct}%;background:{renk};'></div></div>"
+                f"<div class='mbar-val'>{val}</div>"
+                f"</div>"
+            )
+        bar_html += "</div>"
+        st.markdown(bar_html, unsafe_allow_html=True)
 
     with right:
         y = gun["yorum"]
