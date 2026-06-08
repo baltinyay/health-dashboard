@@ -130,25 +130,65 @@ TAHLILLER = {
     "15 Mayıs 2026 (Son Tahlil)": {
         "degerler": [
             ("Açlık Kan Şekeri", "88 mg/dL", "70–100", "ok"),
+            ("HbA1c", "%5.2", "<%5.7", "ok"),
+            ("İnsülin (açlık)", "6.4 µIU/mL", "2.6–24.9", "ok"),
             ("Vitamin D3", "54 ng/mL", "30–100", "ok"),
             ("B12 Vitamini", "420 pg/mL", "200–900", "ok"),
+            ("Folik Asit", "11 ng/mL", "3–17", "ok"),
+            ("Ferritin", "110 µg/L", "30–400", "ok"),
+            ("Demir", "98 µg/dL", "65–175", "ok"),
             ("Total Testosteron", "680 ng/dL", "249–836", "ok"),
             ("Serbest Testosteron", "14.2 pg/mL", "8.7–25.1", "ok"),
-            ("Ferritin", "110 µg/L", "30–400", "ok"),
+            ("TSH", "1.8 mIU/L", "0.4–4.0", "ok"),
+            ("T4 (serbest)", "1.2 ng/dL", "0.8–1.8", "ok"),
             ("ALT", "22 U/L", "<41", "ok"),
             ("AST", "19 U/L", "<41", "ok"),
+            ("Total Kolesterol", "182 mg/dL", "<200", "ok"),
+            ("LDL", "108 mg/dL", "<100", "hi"),
+            ("HDL", "58 mg/dL", ">40", "ok"),
+            ("Trigliserit", "82 mg/dL", "<150", "ok"),
+            ("CRP", "0.6 mg/L", "<5", "ok"),
+            ("Kreatinin", "0.95 mg/dL", "0.7–1.3", "ok"),
         ],
         "not": "D3+K2 takviyesine devam, seviye 50'nin üzerinde. Karaciğer enzimleri temiz. "
-               "Açlık şekeri stabil, insülin hassasiyeti yüksek.",
+               "Açlık şekeri ve insülin stabil, hassasiyet yüksek. LDL hedefin biraz üzerinde — "
+               "doymuş yağı azaltıp omega-3'ü artırmak faydalı olur.",
     },
     "10 Ocak 2026 (Önceki Dönem)": {
         "degerler": [
             ("Açlık Kan Şekeri", "92 mg/dL", "70–100", "ok"),
+            ("HbA1c", "%5.4", "<%5.7", "ok"),
             ("Vitamin D3", "38 ng/mL", "30–100", "ok"),
             ("B12 Vitamini", "310 pg/mL", "200–900", "ok"),
+            ("Ferritin", "95 µg/L", "30–400", "ok"),
             ("Total Testosteron", "610 ng/dL", "249–836", "ok"),
+            ("TSH", "2.1 mIU/L", "0.4–4.0", "ok"),
+            ("ALT", "26 U/L", "<41", "ok"),
+            ("AST", "21 U/L", "<41", "ok"),
+            ("LDL", "124 mg/dL", "<100", "hi"),
+            ("HDL", "51 mg/dL", ">40", "ok"),
+            ("Trigliserit", "98 mg/dL", "<150", "ok"),
         ],
-        "not": "D3 seviyesi yükseliyor ama hâlâ optimumun altında — doz artışı önerildi.",
+        "not": "D3 seviyesi yükseliyor ama hâlâ optimumun altında — doz artışı önerildi. "
+               "LDL yüksek, beslenme düzenlemesi gerekli.",
+    },
+    "22 Ağustos 2025 (Başlangıç)": {
+        "degerler": [
+            ("Açlık Kan Şekeri", "98 mg/dL", "70–100", "ok"),
+            ("HbA1c", "%5.6", "<%5.7", "ok"),
+            ("Vitamin D3", "21 ng/mL", "30–100", "lo"),
+            ("B12 Vitamini", "245 pg/mL", "200–900", "ok"),
+            ("Ferritin", "70 µg/L", "30–400", "ok"),
+            ("Total Testosteron", "540 ng/dL", "249–836", "ok"),
+            ("TSH", "2.4 mIU/L", "0.4–4.0", "ok"),
+            ("ALT", "34 U/L", "<41", "ok"),
+            ("AST", "28 U/L", "<41", "ok"),
+            ("LDL", "138 mg/dL", "<100", "hi"),
+            ("HDL", "44 mg/dL", ">40", "ok"),
+            ("Trigliserit", "142 mg/dL", "<150", "ok"),
+        ],
+        "not": "Başlangıç paneli. D3 düşük (21), takviye başlandı. LDL ve trigliserit yüksek. "
+               "Bu değerler ilerleyen dönemde belirgin iyileşme gösterdi.",
     },
 }
 
@@ -156,15 +196,16 @@ TAHLILLER = {
 # ==========================================
 # ÜST BAŞLIK + TARİH
 # ==========================================
-c1, c2 = st.columns([3, 2])
-with c1:
-    st.markdown("### 🟢 Koç — Metabolizma & Performans")
-with c2:
-    secilen_tarih = st.date_input("Tarih", datetime.date.today(), label_visibility="collapsed")
+st.markdown("### 🟢 Koç — Metabolizma & Performans")
+
+dc1, dc2 = st.columns([3, 1])
+with dc2:
+    secilen_tarih = st.date_input("📅 Takip tarihi", datetime.date.today())
 
 gun = get_gun_data(secilen_tarih)
 
 st.caption(f"Seçili gün: **{secilen_tarih.strftime('%d.%m.%Y, %A')}**")
+st.write("")
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📊 Özet", "🍎 Beslenme", "💪 Antrenman", "💊 Supplement", "🩸 Tahlil"
@@ -175,16 +216,15 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 with tab1:
     cols = st.columns(5)
     kpis = [
-        ("Kilo", f"{gun['kilo']} kg", "Hedef: 94 kg", ""),
-        ("Kalori", f"{gun['kalori']}", f"Hedef: {HEDEF['kalori']}", "warn"),
-        ("Protein", f"{gun['protein']}g", f"Hedef: {HEDEF['protein']}g", "good"),
-        ("Yağ oranı", f"%{gun['yag_orani']}", "Hedef: <%13", ""),
-        ("BMR", f"{gun['bmr']}", "Mifflin-St Jeor", ""),
+        ("Kilo", f"{gun['kilo']} kg", ""),
+        ("Kalori", f"{gun['kalori']}", ""),
+        ("Protein", f"{gun['protein']}g", ""),
+        ("Yağ oranı", f"%{gun['yag_orani']}", ""),
+        ("BMR", f"{gun['bmr']}", ""),
     ]
-    for col, (lbl, val, sub, cls) in zip(cols, kpis):
+    for col, (lbl, val, cls) in zip(cols, kpis):
         col.markdown(f"<div class='kpi'><div class='kpi-label'>{lbl}</div>"
-                     f"<div class='kpi-val {cls}'>{val}</div>"
-                     f"<div class='kpi-sub'>{sub}</div></div>", unsafe_allow_html=True)
+                     f"<div class='kpi-val {cls}'>{val}</div></div>", unsafe_allow_html=True)
 
     st.write("")
     left, right = st.columns(2)
@@ -210,11 +250,15 @@ with tab1:
                     f"<div class='yorum {y['tip']}'>{y['metin']}</div></div>", unsafe_allow_html=True)
 
     st.markdown("<div class='card'><div class='card-title'>📈 Kilo trendi</div>", unsafe_allow_html=True)
-    chart = alt.Chart(KILO_TREND).mark_line(point=True, color="#1D9E75").encode(
+    base = alt.Chart(KILO_TREND).encode(
         x=alt.X("Tarih:T", title=None),
         y=alt.Y("Kilo:Q", scale=alt.Scale(domain=[93, 96]), title="kg"),
-    ).properties(height=240)
-    st.altair_chart(chart, use_container_width=True)
+    )
+    line = base.mark_line(point=alt.OverlayMarkDef(color="#1D9E75", size=60), color="#1D9E75")
+    labels = base.mark_text(dy=-12, fontSize=11, color="#1A1A1A", fontWeight=600).encode(
+        text=alt.Text("Kilo:Q", format=".1f")
+    )
+    st.altair_chart((line + labels).properties(height=260), use_container_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='card'><div class='card-title'>📉 Akıllı tartı detayları</div>", unsafe_allow_html=True)
@@ -282,7 +326,19 @@ with tab4:
 with tab5:
     secim = st.selectbox("Tahlil dönemi", list(TAHLILLER.keys()))
     t = TAHLILLER[secim]
-    st.markdown("<div class='card'><div class='card-title'>🩸 Biyomarker paneli</div>", unsafe_allow_html=True)
+
+    toplam = len(t["degerler"])
+    anormal = sum(1 for *_, d in t["degerler"] if d != "ok")
+    scol = st.columns(3)
+    scol[0].markdown(f"<div class='kpi'><div class='kpi-label'>Toplam parametre</div>"
+                     f"<div class='kpi-val'>{toplam}</div></div>", unsafe_allow_html=True)
+    scol[1].markdown(f"<div class='kpi'><div class='kpi-label'>Normal aralıkta</div>"
+                     f"<div class='kpi-val good'>{toplam - anormal}</div></div>", unsafe_allow_html=True)
+    scol[2].markdown(f"<div class='kpi'><div class='kpi-label'>Dikkat gerektiren</div>"
+                     f"<div class='kpi-val {'bad' if anormal else 'good'}'>{anormal}</div></div>", unsafe_allow_html=True)
+
+    st.write("")
+    st.markdown("<div class='card'><div class='card-title'>🩸 Biyomarker paneli (tamamı)</div>", unsafe_allow_html=True)
     lcols = st.columns(3)
     for i, (ad, val, ref, durum) in enumerate(t["degerler"]):
         with lcols[i % 3]:
@@ -292,3 +348,4 @@ with tab5:
     st.markdown("</div>", unsafe_allow_html=True)
     st.markdown(f"<div class='card'><div class='card-title'>📋 Klinik notlar</div>"
                 f"<div class='yorum warn'>{t['not']}</div></div>", unsafe_allow_html=True)
+    st.caption("Tahlil PDF'lerini yükledikçe değerler otomatik buraya işlenecek (Supabase bağlanınca).")
