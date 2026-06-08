@@ -4,6 +4,34 @@ import datetime
 import altair as alt
 
 # ==========================================
+# SUPABASE BAĞLANTISI
+# ==========================================
+SUPABASE_URL = "https://lmmhcfqchbirklgrwwtj.supabase.co"
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "sb_publishable_Jx5FvqBOVqBvzplgU0ZE-A_35Yy2xxf")
+
+@st.cache_resource
+def init_supabase():
+    try:
+        from supabase import create_client
+        return create_client(SUPABASE_URL, SUPABASE_KEY)
+    except Exception as e:
+        return None
+
+sb = init_supabase()
+
+def sb_select(tablo, tarih=None):
+    """Supabase'den veri çeker. Hata olursa boş liste döner."""
+    if sb is None:
+        return []
+    try:
+        q = sb.table(tablo).select("*")
+        if tarih is not None:
+            q = q.eq("tarih", str(tarih))
+        return q.execute().data or []
+    except Exception:
+        return []
+
+# ==========================================
 # SAYFA AYARLARI
 # ==========================================
 st.set_page_config(
@@ -86,11 +114,11 @@ st.markdown("""
 
 
 # ==========================================
-# DUMMY VERİ (Gemini'nin verileri korundu)
+# VERİ ÇEKME (önce Supabase, yoksa dummy)
 # ==========================================
 HEDEF = {"kalori": 2600, "protein": 200, "karb": 220, "yag": 75}
 
-def get_gun_data(tarih):
+def _dummy_gun():
     return {
         "kilo": 93.5, "yag_orani": 14.2, "kas": 76.4, "su": 58.6,
         "metabolik_yas": 26, "bmr": 1945,
@@ -118,13 +146,62 @@ def get_gun_data(tarih):
                            "Yağ yakımı + kas hedefi için bu hafif açık ideal. Antrenman hacmin yüksek, toparlanma için uykuya dikkat."},
     }
 
+def get_gun_data(tarih):
+    olcum = sb_select("gunluk_olcum", tarih)
+    ogun_rows = sb_select("ogunler", tarih)
+    ant_rows = sb_select("antrenmanlar", tarih)
+
+    # Supabase'de bu güne ait hiç veri yoksa dummy göster
+    if not olcum and not ogun_rows and not ant_rows:
+        return _dummy_gun()
+
+    o = olcum[0] if olcum else {}
+    oguns = [{"ad": r.get("ogun", ""), "kcal": r.get("kcal", 0), "p": r.get("protein", 0),
+              "k": r.get("karb", 0), "y": r.get("yag", 0), "food": r.get("yiyecekler", "")}
+             for r in ogun_rows]
+    toplam_kcal = sum(x["kcal"] for x in oguns)
+    toplam_p = sum(x["p"] for x in oguns)
+    toplam_k = sum(x["k"] for x in oguns)
+    toplam_y = sum(x["y"] for x in oguns)
+
+    ant = ant_rows[0] if ant_rows else {}
+    egz = ant.get("egzersizler", []) or []
+    kard_list = ant.get("kardiyo", []) or []
+    kard = kard_list[0] if kard_list else {"tur": "—", "sure": 0, "kcal": 0, "nabiz": 0}
+
+    return {
+        "kilo": o.get("kilo", 0), "yag_orani": o.get("yag_orani", 0),
+        "kas": o.get("kas_kg", 0), "su": o.get("su_orani", 0),
+        "metabolik_yas": o.get("metabolik_yas", 0), "bmr": o.get("bmr", 1945) if o.get("bmr") else 1945,
+        "kalori": toplam_kcal, "protein": toplam_p, "karb": toplam_k, "yag": toplam_y,
+        "oguns": oguns,
+        "antrenman_tip": ant.get("tip", "—"),
+        "egzersizler": [{"ad": e.get("ad", ""), "set": e.get("set", ""),
+                         "log": e.get("log", ""), "rpe": e.get("rpe", "")} for e in egz],
+        "kardiyo": {"tur": kard.get("tur", "—"), "sure": kard.get("sure", 0),
+                    "kcal": kard.get("kcal", 0), "nabiz": kard.get("nabiz", 0)},
+        "yorum": {"tip": "ok", "metin": "Veriler Supabase'den yüklendi."},
+    }
+
 SUPPS = ["Whey", "Kreatin", "Omega 3", "D Vitamini", "K Vitamini", "NMN",
          "Coenzyme Q10", "C Vitamini", "B12", "Magnezyum", "Çinko", "Bromelain", "Resveratrol"]
 
-KILO_TREND = pd.DataFrame({
-    "Tarih": pd.date_range(end=datetime.date.today(), periods=10),
-    "Kilo": [95.2, 94.9, 94.8, 94.4, 94.5, 94.1, 93.9, 93.8, 93.5, 93.5],
-})
+def get_kilo_trend():
+    rows = sb_select("gunluk_olcum")
+    if rows:
+        rows = sorted(rows, key=lambda r: r.get("tarih", ""))
+        df = pd.DataFrame({
+            "Tarih": pd.to_datetime([r["tarih"] for r in rows]),
+            "Kilo": [r.get("kilo", 0) for r in rows],
+        })
+        if not df.empty and df["Kilo"].sum() > 0:
+            return df
+    return pd.DataFrame({
+        "Tarih": pd.date_range(end=datetime.date.today(), periods=10),
+        "Kilo": [95.2, 94.9, 94.8, 94.4, 94.5, 94.1, 93.9, 93.8, 93.5, 93.5],
+    })
+
+KILO_TREND = get_kilo_trend()
 
 TAHLILLER = {
     "15 Mayıs 2026 (Son Tahlil)": {
