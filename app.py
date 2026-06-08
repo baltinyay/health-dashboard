@@ -31,6 +31,8 @@ def sb_select(tablo, tarih=None):
     except Exception:
         return []
 
+
+
 # ==========================================
 # SAYFA AYARLARI
 # ==========================================
@@ -111,6 +113,18 @@ st.markdown("""
     .stTabs [data-baseweb="tab"] { border-radius: 8px; padding: 6px 14px; }
 </style>
 """, unsafe_allow_html=True)
+
+# --- TEŞHİS PANELİ (sorun çözülünce silinecek) ---
+with st.expander("🔧 Bağlantı teşhisi (geçici)"):
+    st.write("Supabase bağlantısı:", "✅ kuruldu" if sb else "❌ kurulamadı")
+    try:
+        _test = sb_select("gunluk_olcum") if sb else []
+        st.write(f"gunluk_olcum tablosundan gelen satır sayısı: **{len(_test)}**")
+        if _test:
+            st.write("Gelen tarihler:", [r.get("tarih") for r in _test])
+            st.json(_test[0])
+    except Exception as e:
+        st.error(f"Hata: {e}")
 
 
 # ==========================================
