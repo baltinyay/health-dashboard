@@ -9,7 +9,7 @@ import altair as alt
 SUPABASE_URL = "https://lmmhcfqchbirklgrwwtj.supabase.co"
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "sb_publishable_Jx5FvqBOVqBvzplgU0ZE-A_35Yy2xxf")
 
-@st.cache_resource
+@st.cache_resource(ttl=60)
 def init_supabase():
     try:
         from supabase import create_client
@@ -117,14 +117,13 @@ st.markdown("""
 # --- TEŞHİS PANELİ (sorun çözülünce silinecek) ---
 with st.expander("🔧 Bağlantı teşhisi (geçici)"):
     st.write("Supabase bağlantısı:", "✅ kuruldu" if sb else "❌ kurulamadı")
-    try:
-        _test = sb_select("gunluk_olcum") if sb else []
-        st.write(f"gunluk_olcum tablosundan gelen satır sayısı: **{len(_test)}**")
-        if _test:
-            st.write("Gelen tarihler:", [r.get("tarih") for r in _test])
-            st.json(_test[0])
-    except Exception as e:
-        st.error(f"Hata: {e}")
+    if sb:
+        try:
+            raw = sb.table("gunluk_olcum").select("*").execute()
+            st.write("Ham sorgu sonucu satır sayısı:", len(raw.data or []))
+            st.json(raw.data)
+        except Exception as e:
+            st.error(f"Sorgu hatası: {type(e).__name__}: {e}")
 
 
 # ==========================================
