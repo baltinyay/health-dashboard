@@ -1,14 +1,9 @@
 // netlify/functions/chat.js
-// Gizli mutfak: chat mesajını alır, Gemini'ye sorar, cevabı döndürür.
-// Gemini API key burada DEĞİL — Netlify'ın gizli kasasında (environment variable).
-
 exports.handler = async (event) => {
-  // Sadece POST kabul et
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: JSON.stringify({ error: 'Yalnızca POST' }) };
   }
 
-  // BOŞLUK TEMİZLEYİCİ (.trim)
   const GEMINI_KEY = (process.env.GEMINI_API_KEY || '').trim();
   if (!GEMINI_KEY) {
     return { statusCode: 500, body: JSON.stringify({ error: 'Gemini key tanımlı değil' }) };
@@ -23,17 +18,24 @@ exports.handler = async (event) => {
     return { statusCode: 400, body: JSON.stringify({ error: 'Geçersiz istek' }) };
   }
 
-  if (!mesaj.trim()) {
-    return { statusCode: 400, body: JSON.stringify({ error: 'Boş mesaj' }) };
+  // Gemini'ye hem cevap vermesini hem de verileri gizli bir JSON objesinde toplamasını söylüyoruz
+  const sistemTalimati = `Sen kişisel fitness ve beslenme koçusun. Türkçe konuşuyorsun.
+Kullanıcı yediklerini yazdığında besin değerlerini hesapla. 
+MUTLAKA şu JSON formatında cevap ver, başka hiçbir düz metin yazma:
+{
+  "cevap": "Kullanıcıya chat ekranında gösterilecek samimi koçluk mesajı ve makro özeti buraya",
+  "kayit": {
+    "is_food": true, 
+    "ogun_adi": "Öğle veya Akşam veya Sabah (tahmin et)",
+    "yiyecekler": "Yenilen gıdaların listesi",
+    "kcal": 1250,
+    "protein": 55,
+    "karb": 140,
+    "yag": 45
   }
+}
+Eğer kullanıcı yemek yazmadıysa, normal sohbet ettiyse "is_food" değerini false yap ve "kayit" içini boş bırak.`;
 
-  // Koçun kişiliği ve görevi
-  const sistemTalimati = `Sen kişisel bir sağlık, beslenme ve antrenman koçusun. Türkçe konuşuyorsun.
-Kullanıcı sana ne yediğini yazdığında, besinlerin yaklaşık makro değerlerini (kalori, protein, karbonhidrat, yağ) hesapla.
-Kısa, net ve motive edici ol. Gereksiz uzun açıklama yapma. Samimi ama profesyonel bir dille konuş.
-Sayısal değerler verirken yaklaşık olduklarını belirt.`;
-
-  // Gemini'ye gönderilecek konuşma geçmişi
   const contents = [];
   for (const h of gecmis) {
     contents.push({ role: h.rol === 'kullanici' ? 'user' : 'model', parts: [{ text: h.metin }] });
@@ -41,7 +43,6 @@ Sayısal değerler verirken yaklaşık olduklarını belirt.`;
   contents.push({ role: 'user', parts: [{ text: mesaj }] });
 
   try {
-    // KESİN ÇÖZÜM: Güncel ve çalışan model (gemini-3.5-flash)
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${GEMINI_KEY}`;
     
     const res = await fetch(url, {
@@ -50,21 +51,25 @@ Sayısal değerler verirken yaklaşık olduklarını belirt.`;
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: sistemTalimati }] },
         contents,
-        generationConfig: { maxOutputTokens: 1200 },
+        generationConfig: { 
+          maxOutputTokens: 1200,
+          responseMimeType: "application/json" // Gemini'nin kesinlikle JSON dönmesini zorunlu kılıyoruz
+        },
       }),
     });
 
     const data = await res.json();
-
     if (!res.ok) {
       return { statusCode: res.status, body: JSON.stringify({ error: 'Gemini hatası', detay: data }) };
     }
 
-    const cevap = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Cevap alınamadı.';
+    // Gemini'den gelen ham JSON string'i alıp temiz bir şekilde iletiyoruz
+    const hamCevap = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cevap }),
+      body: hamCevap // Zaten JSON formatında olduğu için direkt gönderiyoruz
     };
   } catch (e) {
     return { statusCode: 500, body: JSON.stringify({ error: 'Sunucu hatası', detay: String(e) }) };
