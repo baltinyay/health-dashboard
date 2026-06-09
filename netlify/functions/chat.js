@@ -1,46 +1,126 @@
-async function gonder(){
-  const input = document.getElementById('chatInput');
-  const sendBtn = document.getElementById('chatSend');
-  const text = input.value.trim();
-  if(!text) return;
+exports.handler = async function(event) {
+  try {
+    if (event.httpMethod !== 'POST') {
+      return {
+        statusCode: 405,
+        body: JSON.stringify({ error: 'Sadece POST isteği desteklenir.' })
+      };
+    }
 
-  chatGecmis.push({rol:'kullanici', metin:text});
-  input.value=''; input.style.height='auto';
-  sendBtn.disabled = true;
+    const body = JSON.parse(event.body || '{}');
+    const mesaj = body.mesaj;
 
-  // Mesajları çiz
-  document.getElementById('chatMsgs').innerHTML = chatGecmis.map(m=>`<div class="msg ${m.rol==='kullanici'?'user':'koc'}">${escapeHtml(m.metin)}</div>`).join('') + '<div class="msg typing" id="typing"><span></span><span></span><span></span></div>';
-  scrollChat();
+    if (!mesaj || !mesaj.trim()) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: 'Mesaj boş olamaz.' })
+      };
+    }
 
-  try{
-    const res = await fetch('/.netlify/functions/chat', {
-      method:'POST',
-      body: JSON.stringify({ mesaj:text }),
-    });
-    
-    const data = await res.json();
-    document.getElementById('typing').remove();
-    
-    let cevap = data.cevap || "Hata oluştu.";
-    
-    // Veritabanı kaydı
-    if(data.kayit && data.kayit.is_food){
-      const yeniOgun = { tarih: selDate, ogun: data.kayit.ogun_adi, yiyecekler: data.kayit.yiyecekler, kcal: data.kayit.kcal, protein: data.kayit.protein, karb: data.kayit.karb, yag: data.kayit.yag };
-      const { error } = await sb.from('ogunler').insert([yeniOgun]);
-      if(!error) {
-        if(!cache.ogun[selDate]) cache.ogun[selDate] = [];
-        cache.ogun[selDate].push(yeniOgun);
-        cevap += '\n\n*(✅ Günlüğe eklendi!)*';
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ error: 'GEMINI_API_KEY Netlify ortam değişkenlerinde tanımlı değil.' })
+      };
+    }
+
+    const models = [
+      process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+      'gemini-2.5-flash-lite'
+    ];
+
+    let lastError = null;
+
+    for (const model of models) {
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              contents: [
+                {
+                  parts: [
+                    {
+                      text: `
+Sen kullanıcının beslenme, makro, mikro, antrenman ve sağlık verilerini takip eden kişisel koçusun.
+
+Kurallar:
+- Türkçe cevap ver.
+- Kısa, net ve uygulanabilir konuş.
+- Tıbbi teşhis koyma.
+- Tahlil veya sağlık sonucunda risk varsa doktora yönlendir.
+- Yemek girildiyse kalori ve makro tahmini yap.
+- Kullanıcı sadece sohbet ediyorsa doğal cevap ver.
+
+Kullanıcı mesajı:
+${mesaj}
+                      `
+                    }
+                  ]
+                }
+              ]
+            })
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          lastError = data;
+          console.error(`Gemini hata - model: ${model}`, data);
+
+          if (response.status === 503 || response.status === 429 || response.status >= 500) {
+            continue;
+          }
+
+          return {
+            statusCode: response.status,
+            body: JSON.stringify({
+              error: data
+            })
+          };
+        }
+
+        const cevap =
+          data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+          'Cevap üretilemedi.';
+
+        return {
+          statusCode: 200,
+          body: JSON.stringify({
+            cevap
+          })
+        };
+
+      } catch (err) {
+        lastError = err;
+        console.error(`Model çağrı hatası - ${model}`, err);
+        continue;
       }
     }
-    
-    chatGecmis.push({rol:'koc', metin:cevap});
-  } catch(e) {
-    if(document.getElementById('typing')) document.getElementById('typing').remove();
-    chatGecmis.push({rol:'koc', metin:'Bağlantı zaman aşımına uğradı, tekrar dene.'});
-  }
 
-  document.getElementById('chatMsgs').innerHTML = chatGecmis.map(m=>`<div class="msg ${m.rol==='kullanici'?'user':'koc'}">${escapeHtml(m.metin)}</div>`).join('');
-  sendBtn.disabled = false;
-  scrollChat();
-}
+    return {
+      statusCode: 503,
+      body: JSON.stringify({
+        error: 'Gemini şu anda yoğun veya geçici olarak erişilemiyor.',
+        detay: lastError
+      })
+    };
+
+  } catch (error) {
+    console.error('Netlify function genel hata:', error);
+
+    return {
+      statusCode: 500,
+      body: JSON.stringify({
+        error: error.message || 'Sunucu hatası oluştu.'
+      })
+    };
+  }
+};
