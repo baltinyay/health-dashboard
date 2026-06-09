@@ -1,28 +1,7 @@
-const RESPONSE_SCHEMA = {
-  type: "OBJECT",
-  properties: {
-    cevap: { type: "STRING" },
-    kayit: {
-      type: "OBJECT",
-      properties: {
-        is_food: { type: "BOOLEAN" },
-        ogun_adi: { type: "STRING" },
-        yiyecekler: { type: "STRING" },
-        kcal: { type: "NUMBER" },
-        protein: { type: "NUMBER" },
-        karb: { type: "NUMBER" },
-        yag: { type: "NUMBER" }
-      },
-      required: ["is_food"]
-    }
-  },
-  required: ["cevap", "kayit"]
-};
-
 exports.handler = async function(event) {
   try {
     if (event.httpMethod !== "POST") {
-      return cevapJson(405, {
+      return json({
         cevap: "Sadece POST isteği desteklenir.",
         kayit: { is_food: false }
       });
@@ -32,8 +11,8 @@ exports.handler = async function(event) {
     const mesaj = String(body.mesaj || "").trim();
 
     if (!mesaj) {
-      return cevapJson(200, {
-        cevap: "Mesaj boş olamaz.",
+      return json({
+        cevap: "Mesaj boş.",
         kayit: { is_food: false }
       });
     }
@@ -43,72 +22,63 @@ exports.handler = async function(event) {
     const apiKey = process.env.GEMINI_API_KEY;
     const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
-    if (!apiKey) {
-      if (foodLikely) {
-        return cevapJson(200, yerelMakroTahmin(mesaj));
-      }
+    if (apiKey) {
+      try {
+        const geminiText = await geminiyeSor({
+          apiKey,
+          model,
+          mesaj,
+          foodLikely
+        });
 
-      return cevapJson(200, {
-        cevap: "GEMINI_API_KEY Netlify ortam değişkenlerinde tanımlı değil.",
-        kayit: { is_food: false }
-      });
-    }
+        const parsed = parseJson(geminiText);
 
-    try {
-      const geminiSonuc = await geminiyeSor({
-        apiKey,
-        model,
-        mesaj,
-        foodLikely
-      });
+        if (parsed && parsed.cevap && parsed.kayit) {
+          const normalized = normalizeResponse(parsed, mesaj);
 
-      const parsed = parseGeminiJson(geminiSonuc);
+          if (foodLikely && !normalized.kayit.is_food) {
+            return json(yerelMakroHesapla(mesaj));
+          }
 
-      if (parsed && parsed.cevap && parsed.kayit) {
-        const temiz = normalizeKayit(parsed, mesaj);
-
-        if (foodLikely && !temiz.kayit.is_food) {
-          return cevapJson(200, yerelMakroTahmin(mesaj));
+          return json(normalized);
         }
 
-        return cevapJson(200, temiz);
+        if (foodLikely) {
+          return json(yerelMakroHesapla(mesaj));
+        }
+
+      } catch (err) {
+        console.error("Gemini hata:", err);
+
+        if (foodLikely) {
+          return json(yerelMakroHesapla(mesaj));
+        }
       }
-
-      if (foodLikely) {
-        return cevapJson(200, yerelMakroTahmin(mesaj));
-      }
-
-      return cevapJson(200, {
-        cevap: "Anladım.",
-        kayit: { is_food: false }
-      });
-
-    } catch (geminiError) {
-      console.error("Gemini hata:", geminiError);
-
-      if (foodLikely) {
-        return cevapJson(200, yerelMakroTahmin(mesaj));
-      }
-
-      return cevapJson(200, {
-        cevap: "Şu an yanıt üretirken sorun oldu. Tekrar dene.",
-        kayit: { is_food: false }
-      });
     }
+
+    if (foodLikely) {
+      return json(yerelMakroHesapla(mesaj));
+    }
+
+    return json({
+      cevap: "Anladım.",
+      kayit: { is_food: false }
+    });
 
   } catch (error) {
     console.error("Function genel hata:", error);
 
-    return cevapJson(200, {
+    return json({
       cevap: "Sunucu tarafında hata oluştu. Tekrar dene.",
-      kayit: { is_food: false }
+      kayit: { is_food: false },
+      detay: error.message || String(error)
     });
   }
 };
 
-function cevapJson(statusCode, payload) {
+function json(payload) {
   return {
-    statusCode,
+    statusCode: 200,
     headers: {
       "Content-Type": "application/json"
     },
@@ -118,50 +88,52 @@ function cevapJson(statusCode, payload) {
 
 async function geminiyeSor({ apiKey, model, mesaj, foodLikely }) {
   const prompt = `
-Sen kişisel beslenme ve antrenman koçusun.
+Sen kullanıcının kişisel beslenme ve antrenman koçusun.
 
-En önemli kural:
-Kullanıcı yemek yazdıysa asla "hesaplayamadım", "daha net yaz", "hangi değerleri istiyorsun" deme.
-Porsiyon net değilse standart porsiyon varsay ve tahmini hesapla.
+En önemli kurallar:
+- Kullanıcı yemek yazdıysa asla "hesaplayamadım", "daha net yaz", "hangi değerleri istiyorsun" deme.
+- Porsiyon net değilse standart porsiyon varsay.
+- Kullanıcı yemek yazdıysa direkt kalori ve makro hesapla.
+- Cevap kısa olsun.
+- Türkçe cevap ver.
+- Sadece JSON döndür. Markdown, açıklama, üçlü tırnak kullanma.
 
 Kısaltmalar:
 - yk = yemek kaşığı
 - tk = tatlı kaşığı
 - sb = su bardağı
-- adet = tane
+- gr = gram
+- kcal = kalori
 - karb = karbonhidrat
-- yağ = yağ
 
-Kullanıcı yemek/besin/öğün yazdıysa:
-- Kalori, protein, karbonhidrat ve yağ hesapla.
-- Tek toplam kayıt döndür.
-- Cevap çok kısa olsun.
-- Örnek cevap: "Kaydettim. Toplam: 1120 kcal | Protein 62g | Karb 116g | Yağ 38g"
+Yemek/beslenme mesajıysa şu JSON formatında dön:
 
-Kullanıcı yemek yazmadıysa:
-- Kısa doğal cevap ver.
-- kayit.is_food false olsun.
-
-Mutlaka sadece JSON döndür. Markdown yok. Açıklama yok.
-
-JSON formatı:
 {
-  "cevap": "kısa cevap",
+  "cevap": "Kaydettim. Toplam: yaklaşık 1080 kcal | Protein 62g | Karb 120g | Yağ 37g",
   "kayit": {
     "is_food": true,
     "ogun_adi": "Öğlen + Akşam",
-    "yiyecekler": "kısa yemek özeti",
-    "kcal": 1120,
+    "yiyecekler": "1 tavuk dürüm, 10 adet patates kızartması, 10 yk makarna, 5-6 yk panelenmiş tavuk",
+    "kcal": 1080,
     "protein": 62,
-    "karb": 116,
-    "yag": 38
+    "karb": 120,
+    "yag": 37
   }
 }
 
+Yemek/beslenme mesajı değilse şu JSON formatında dön:
+
+{
+  "cevap": "Kısa doğal cevap",
+  "kayit": {
+    "is_food": false
+  }
+}
+
+Bu mesaj yemek gibi görünüyor mu: ${foodLikely ? "Evet. Yemek girişi olarak işle." : "Hayır. Sohbet olarak işle."}
+
 Kullanıcı mesajı:
 ${mesaj}
-
-Bu mesaj yemek gibi görünüyor mu? ${foodLikely ? "Evet, yemek girişi olarak işle." : "Hayır, sohbet olarak yanıtla."}
 `;
 
   const response = await fetch(
@@ -184,8 +156,7 @@ Bu mesaj yemek gibi görünüyor mu? ${foodLikely ? "Evet, yemek girişi olarak 
         generationConfig: {
           temperature: 0.1,
           maxOutputTokens: 500,
-          responseMimeType: "application/json",
-          responseSchema: RESPONSE_SCHEMA
+          responseMimeType: "application/json"
         }
       })
     }
@@ -200,7 +171,7 @@ Bu mesaj yemek gibi görünüyor mu? ${foodLikely ? "Evet, yemek girişi olarak 
   return data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 }
 
-function parseGeminiJson(raw) {
+function parseJson(raw) {
   try {
     let text = String(raw || "").trim();
 
@@ -224,9 +195,12 @@ function parseGeminiJson(raw) {
   }
 }
 
-function normalizeKayit(parsed, mesaj) {
+function normalizeResponse(parsed, mesaj) {
   if (!parsed.kayit) {
-    parsed.kayit = { is_food: false };
+    return {
+      cevap: parsed.cevap || "Anladım.",
+      kayit: { is_food: false }
+    };
   }
 
   if (!parsed.kayit.is_food) {
@@ -241,10 +215,14 @@ function normalizeKayit(parsed, mesaj) {
   const karb = Math.round(Number(parsed.kayit.karb) || 0);
   const yag = Math.round(Number(parsed.kayit.yag) || 0);
 
+  if (kcal <= 0) {
+    return yerelMakroHesapla(mesaj);
+  }
+
   return {
     cevap:
       parsed.cevap ||
-      `Kaydettim. Toplam: ${kcal} kcal | Protein ${protein}g | Karb ${karb}g | Yağ ${yag}g`,
+      `Kaydettim. Toplam: yaklaşık ${kcal} kcal | Protein ${protein}g | Karb ${karb}g | Yağ ${yag}g`,
     kayit: {
       is_food: true,
       ogun_adi: parsed.kayit.ogun_adi || ogunBul(mesaj),
@@ -255,23 +233,6 @@ function normalizeKayit(parsed, mesaj) {
       yag
     }
   };
-}
-
-function yemekMi(mesaj) {
-  const t = temizle(mesaj);
-
-  const kelimeler = [
-    "kahvalti", "oglen", "aksam", "ara ogun", "ogun",
-    "yemek", "yedim", "ictim", "tukettim",
-    "tavuk", "durum", "doner", "makarna", "pilav", "patates",
-    "yumurta", "peynir", "ekmek", "corba", "salata",
-    "et", "balik", "ton baligi", "yogurt", "sut",
-    "protein", "whey", "muz", "elma", "yulaf",
-    "kofte", "hamburger", "pizza", "lahmacun",
-    "kcal", "kalori", "gram", "gr", "yk", "adet"
-  ];
-
-  return kelimeler.some(k => t.includes(k));
 }
 
 function temizle(str) {
@@ -285,9 +246,58 @@ function temizle(str) {
     .replaceAll("ç", "c");
 }
 
-function ogunBul(mesaj) {
+function yemekMi(mesaj) {
   const t = temizle(mesaj);
 
+  const kelimeler = [
+    "kahvalti",
+    "oglen",
+    "aksam",
+    "ara ogun",
+    "ogun",
+    "yemek",
+    "yedim",
+    "ictim",
+    "tukettim",
+    "tavuk",
+    "durum",
+    "doner",
+    "makarna",
+    "pilav",
+    "patates",
+    "yumurta",
+    "peynir",
+    "ekmek",
+    "corba",
+    "salata",
+    "et",
+    "balik",
+    "ton baligi",
+    "yogurt",
+    "sut",
+    "protein",
+    "whey",
+    "muz",
+    "elma",
+    "yulaf",
+    "kofte",
+    "hamburger",
+    "pizza",
+    "lahmacun",
+    "kcal",
+    "kalori",
+    "gram",
+    "gr",
+    "yk",
+    "yemek kasigi",
+    "adet"
+  ];
+
+  return kelimeler.some(k => t.includes(k));
+}
+
+function ogunBul(mesaj) {
+  const t = temizle(mesaj);
   const ogunler = [];
 
   if (t.includes("kahvalti")) ogunler.push("Kahvaltı");
@@ -298,7 +308,7 @@ function ogunBul(mesaj) {
   return ogunler.length ? ogunler.join(" + ") : "Genel";
 }
 
-function yerelMakroTahmin(mesaj) {
+function yerelMakroHesapla(mesaj) {
   const t = temizle(mesaj);
 
   let kcal = 0;
@@ -306,14 +316,14 @@ function yerelMakroTahmin(mesaj) {
   let karb = 0;
   let yag = 0;
 
-  const eklenenler = [];
+  const yiyecekler = [];
 
   function ekle(ad, carpan, deger) {
     kcal += carpan * deger.kcal;
     protein += carpan * deger.protein;
     karb += carpan * deger.karb;
     yag += carpan * deger.yag;
-    eklenenler.push(ad);
+    yiyecekler.push(ad);
   }
 
   const tavukDurum = t.match(/(\d+)?\s*tavuk\s*durum/);
@@ -329,7 +339,7 @@ function yerelMakroTahmin(mesaj) {
 
   const patates = t.match(/(\d+)\s*(adet|tane)?\s*patates/);
   if (patates && t.includes("kizart")) {
-    const adet = Number(patates[1] || 1);
+    const adet = Number(patates[1] || 10);
     ekle(`${adet} adet patates kızartması`, adet / 10, {
       kcal: 120,
       protein: 2,
@@ -340,7 +350,7 @@ function yerelMakroTahmin(mesaj) {
 
   const makarnaYk = t.match(/(\d+)\s*(yk|yemek kasigi)\s*makarna/);
   if (makarnaYk) {
-    const yk = Number(makarnaYk[1] || 1);
+    const yk = Number(makarnaYk[1] || 10);
     ekle(`${yk} yemek kaşığı makarna`, yk, {
       kcal: 18,
       protein: 0.6,
@@ -351,7 +361,7 @@ function yerelMakroTahmin(mesaj) {
 
   const panelTavuk = t.match(/(\d+)(?:\s*-\s*(\d+))?\s*(yk|yemek kasigi)\s*panelenmis\s*tavuk/);
   if (panelTavuk) {
-    const min = Number(panelTavuk[1] || 1);
+    const min = Number(panelTavuk[1] || 5);
     const max = Number(panelTavuk[2] || min);
     const yk = (min + max) / 2;
 
@@ -363,23 +373,12 @@ function yerelMakroTahmin(mesaj) {
     });
   }
 
-  const sadeTavuk = !panelTavuk && t.match(/(\d+)?\s*(porsiyon|adet)?\s*tavuk/);
-  if (sadeTavuk && !t.includes("durum")) {
-    const adet = Number(sadeTavuk[1] || 1);
-    ekle(`${adet} porsiyon tavuk`, adet, {
-      kcal: 250,
-      protein: 38,
-      karb: 0,
-      yag: 8
-    });
-  }
-
   if (kcal === 0) {
     kcal = 600;
     protein = 30;
     karb = 60;
     yag = 22;
-    eklenenler.push(mesaj);
+    yiyecekler.push(mesaj);
   }
 
   kcal = Math.round(kcal);
@@ -392,7 +391,7 @@ function yerelMakroTahmin(mesaj) {
     kayit: {
       is_food: true,
       ogun_adi: ogunBul(mesaj),
-      yiyecekler: eklenenler.join(", ") || mesaj,
+      yiyecekler: yiyecekler.join(", ") || mesaj,
       kcal,
       protein,
       karb,
