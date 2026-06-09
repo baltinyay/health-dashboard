@@ -3,21 +3,28 @@ exports.handler = async function(event) {
     if (event.httpMethod !== "POST") {
       return json({
         cevap: "Sadece POST isteği desteklenir.",
-        kayit: { is_food: false }
+        kayit: { is_food: false },
+        saved: false
       });
     }
 
     const body = JSON.parse(event.body || "{}");
+
     const mesaj = String(body.mesaj || "").trim();
+    const tarih = String(body.tarih || "").trim() || new Date().toISOString().slice(0, 10);
+    const userId = body.user_id || null;
 
     if (!mesaj) {
       return json({
         cevap: "Mesaj boş.",
-        kayit: { is_food: false }
+        kayit: { is_food: false },
+        saved: false
       });
     }
 
     const foodLikely = yemekMi(mesaj);
+
+    let sonuc = null;
 
     const apiKey = process.env.GEMINI_API_KEY;
     const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
@@ -34,44 +41,65 @@ exports.handler = async function(event) {
         const parsed = parseJson(geminiText);
 
         if (parsed && parsed.cevap && parsed.kayit) {
-          const normalized = normalizeResponse(parsed, mesaj);
-
-          if (foodLikely && !normalized.kayit.is_food) {
-            return json(yerelMakroHesapla(mesaj));
-          }
-
-          return json(normalized);
+          sonuc = normalizeResponse(parsed, mesaj);
         }
-
-        if (foodLikely) {
-          return json(yerelMakroHesapla(mesaj));
-        }
-
       } catch (err) {
         console.error("Gemini hata:", err);
-
-        if (foodLikely) {
-          return json(yerelMakroHesapla(mesaj));
-        }
       }
     }
 
-    if (foodLikely) {
-      return json(yerelMakroHesapla(mesaj));
+    if (!sonuc) {
+      if (foodLikely) {
+        sonuc = yerelMakroHesapla(mesaj);
+      } else {
+        sonuc = {
+          cevap: "Anladım.",
+          kayit: { is_food: false }
+        };
+      }
+    }
+
+    if (foodLikely && !sonuc.kayit?.is_food) {
+      sonuc = yerelMakroHesapla(mesaj);
+    }
+
+    if (!sonuc.kayit?.is_food) {
+      return json({
+        ...sonuc,
+        saved: false
+      });
+    }
+
+    const kayitSonucu = await supabaseOgunKaydet({
+      tarih,
+      userId,
+      kayit: sonuc.kayit,
+      orijinalMesaj: mesaj
+    });
+
+    if (kayitSonucu.ok) {
+      return json({
+        ...sonuc,
+        saved: true,
+        saved_row: kayitSonucu.data,
+        cevap: `${sonuc.cevap}\n\n✅ Beslenme günlüğüne eklendi.`
+      });
     }
 
     return json({
-      cevap: "Anladım.",
-      kayit: { is_food: false }
+      ...sonuc,
+      saved: false,
+      save_error: kayitSonucu.message,
+      cevap: `${sonuc.cevap}\n\n⚠️ Makrolar hesaplandı ama Supabase kaydı yapılamadı: ${kayitSonucu.message}`
     });
 
   } catch (error) {
     console.error("Function genel hata:", error);
 
     return json({
-      cevap: "Sunucu tarafında hata oluştu. Tekrar dene.",
+      cevap: "Sunucu tarafında hata oluştu: " + (error.message || String(error)),
       kayit: { is_food: false },
-      detay: error.message || String(error)
+      saved: false
     });
   }
 };
@@ -196,14 +224,7 @@ function parseJson(raw) {
 }
 
 function normalizeResponse(parsed, mesaj) {
-  if (!parsed.kayit) {
-    return {
-      cevap: parsed.cevap || "Anladım.",
-      kayit: { is_food: false }
-    };
-  }
-
-  if (!parsed.kayit.is_food) {
+  if (!parsed.kayit || !parsed.kayit.is_food) {
     return {
       cevap: parsed.cevap || "Anladım.",
       kayit: { is_food: false }
@@ -233,6 +254,118 @@ function normalizeResponse(parsed, mesaj) {
       yag
     }
   };
+}
+
+async function supabaseOgunKaydet({ tarih, userId, kayit, orijinalMesaj }) {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SECRET_KEY;
+
+  if (!supabaseUrl) {
+    return {
+      ok: false,
+      message: "SUPABASE_URL Netlify ortam değişkenlerinde tanımlı değil."
+    };
+  }
+
+  if (!serviceKey) {
+    return {
+      ok: false,
+      message: "SUPABASE_SERVICE_ROLE_KEY Netlify ortam değişkenlerinde tanımlı değil."
+    };
+  }
+
+  const temelPayload = {
+    tarih: tarih,
+    ogun: kayit.ogun_adi || "Genel",
+    yiyecekler: kayit.yiyecekler || orijinalMesaj,
+    kcal: Math.round(Number(kayit.kcal) || 0),
+    protein: Math.round(Number(kayit.protein) || 0),
+    karb: Math.round(Number(kayit.karb) || 0),
+    yag: Math.round(Number(kayit.yag) || 0)
+  };
+
+  const payloadWithUser = userId
+    ? {
+        ...temelPayload,
+        user_id: userId
+      }
+    : temelPayload;
+
+  let result = await postgrestInsert({
+    supabaseUrl,
+    serviceKey,
+    payload: payloadWithUser
+  });
+
+  if (!result.ok && userId && kolonHatasi(result.message, "user_id")) {
+    result = await postgrestInsert({
+      supabaseUrl,
+      serviceKey,
+      payload: temelPayload
+    });
+  }
+
+  return result;
+}
+
+async function postgrestInsert({ supabaseUrl, serviceKey, payload }) {
+  try {
+    const url = `${supabaseUrl.replace(/\/$/, "")}/rest/v1/ogunler`;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": serviceKey,
+        "Authorization": `Bearer ${serviceKey}`,
+        "Prefer": "return=representation"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const text = await response.text();
+
+    let data = null;
+
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = text;
+    }
+
+    if (!response.ok) {
+      console.error("Supabase insert hata:", data);
+
+      return {
+        ok: false,
+        message:
+          data?.message ||
+          data?.hint ||
+          data?.details ||
+          `Supabase HTTP ${response.status}`
+      };
+    }
+
+    return {
+      ok: true,
+      data: Array.isArray(data) ? data[0] : data
+    };
+
+  } catch (error) {
+    console.error("Supabase insert genel hata:", error);
+
+    return {
+      ok: false,
+      message: error.message || String(error)
+    };
+  }
+}
+
+function kolonHatasi(message, columnName) {
+  const m = String(message || "").toLowerCase();
+  return m.includes(columnName.toLowerCase()) || m.includes("column");
 }
 
 function temizle(str) {
