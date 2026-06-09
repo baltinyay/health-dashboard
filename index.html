@@ -158,6 +158,35 @@ body{
 @keyframes spin{to{transform:rotate(360deg)}}
 .empty{text-align:center;padding:40px 20px;color:var(--txt3);font-size:14px}
 .empty svg{width:38px;height:38px;margin-bottom:10px;opacity:.4}
+
+/* CHAT */
+.chat-wrap{display:flex;flex-direction:column;height:calc(100vh - 230px);min-height:420px}
+.chat-msgs{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:4px 2px 16px;scrollbar-width:thin}
+.msg{max-width:82%;padding:12px 15px;border-radius:16px;font-size:14px;line-height:1.55;white-space:pre-wrap;word-wrap:break-word;animation:msgin .3s cubic-bezier(.2,.8,.2,1)}
+@keyframes msgin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.msg.user{align-self:flex-end;background:var(--green);color:#04120C;border-bottom-right-radius:5px;font-weight:500}
+.msg.koc{align-self:flex-start;background:var(--card);border:1px solid var(--line);color:var(--txt);border-bottom-left-radius:5px}
+.msg.typing{align-self:flex-start;background:var(--card);border:1px solid var(--line);border-bottom-left-radius:5px;display:flex;gap:5px;padding:15px}
+.msg.typing span{width:7px;height:7px;border-radius:50%;background:var(--txt3);animation:blink 1.2s infinite}
+.msg.typing span:nth-child(2){animation-delay:.2s}
+.msg.typing span:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,60%,100%{opacity:.3}30%{opacity:1}}
+.chat-welcome{text-align:center;padding:30px 16px;color:var(--txt2)}
+.chat-welcome-ic{width:48px;height:48px;border-radius:14px;background:var(--green-bg);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;color:var(--green)}
+.chat-welcome-ic svg{width:24px;height:24px}
+.chat-welcome h3{font-size:16px;font-weight:700;color:var(--txt);margin-bottom:6px}
+.chat-welcome p{font-size:13px;line-height:1.5}
+.chat-chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:16px}
+.chip{padding:8px 13px;border-radius:11px;background:var(--card);border:1px solid var(--line);color:var(--txt2);font-size:12px;cursor:pointer;transition:.15s}
+.chip:active{transform:scale(.96)}
+.chip:hover{border-color:var(--green);color:var(--txt)}
+.chat-input{display:flex;gap:9px;align-items:flex-end;padding-top:12px;border-top:1px solid var(--line)}
+.chat-input textarea{flex:1;background:var(--card);border:1px solid var(--line);border-radius:13px;padding:12px 14px;color:var(--txt);font-size:14px;font-family:inherit;resize:none;max-height:120px;line-height:1.4;outline:none;transition:.15s}
+.chat-input textarea:focus{border-color:var(--green)}
+.chat-send{width:44px;height:44px;border-radius:13px;background:var(--green);border:none;color:#04120C;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.15s}
+.chat-send:active{transform:scale(.92)}
+.chat-send:disabled{opacity:.4;cursor:not-allowed}
+.chat-send svg{width:19px;height:19px}
 </style>
 </head>
 <body>
@@ -226,9 +255,12 @@ const I = {
   run:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13" cy="4" r="2"/><path d="M8 21l3-6 3 2 1 4M11 15l-2-5 4-2 2 3 3 1"/></svg>',
   check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5L20 6"/></svg>',
   empty:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>',
+  chat:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>',
+  send:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>',
 };
 
 const TABS = [
+  {id:'kocu', name:'Koç', ic:I.chat},
   {id:'ozet', name:'Özet', ic:I.chart},
   {id:'besl', name:'Beslenme', ic:I.food},
   {id:'ant', name:'Antrenman', ic:I.dumbbell},
@@ -245,7 +277,6 @@ let kiloChart = null;
 const cache = { olcum:{}, ogun:{}, ant:{}, supp:{}, lab:[], kiloTrend:[], loaded:false };
 
 async function loadAll(){
-  let diag = '';
   try{
     const [olcum, ogun, ant, supp, lab] = await Promise.all([
       sb.from('gunluk_olcum').select('*'),
@@ -254,7 +285,6 @@ async function loadAll(){
       sb.from('supplementler').select('*'),
       sb.from('tahliller').select('*'),
     ]);
-    if(olcum.error) diag += 'gunluk_olcum HATA: '+olcum.error.message+' | ';
     (olcum.data||[]).forEach(r=>cache.olcum[r.tarih]=r);
     (ogun.data||[]).forEach(r=>{ (cache.ogun[r.tarih]=cache.ogun[r.tarih]||[]).push(r); });
     (ant.data||[]).forEach(r=>cache.ant[r.tarih]=r);
@@ -262,13 +292,10 @@ async function loadAll(){
     cache.lab = (lab.data||[]).sort((a,b)=>(b.tarih||'').localeCompare(a.tarih||''));
     cache.kiloTrend = (olcum.data||[]).filter(r=>r.kilo).sort((a,b)=>a.tarih.localeCompare(b.tarih));
     cache.loaded = true;
-    diag += 'gunluk_olcum satır: '+(olcum.data||[]).length+' | tarihler: '+(olcum.data||[]).map(r=>r.tarih).join(', ');
   }catch(e){
     console.error(e);
     cache.loaded = true;
-    diag += 'BAĞLANTI HATASI: '+e.message;
   }
- 
   buildTabs();
   render();
 }
@@ -334,7 +361,10 @@ function render(){
   updHeader();
   const p = document.getElementById('pages');
   if(!cache.loaded){ return; }
-  if(curTab==='ozet') p.innerHTML = viewOzet();
+  // Koç sekmesinde tarih şeridi gizlensin
+  document.querySelector('.datestrip').style.display = (curTab==='kocu') ? 'none' : 'flex';
+  if(curTab==='kocu'){ p.innerHTML = viewKocu(); bindChat(); }
+  else if(curTab==='ozet') p.innerHTML = viewOzet();
   else if(curTab==='besl') p.innerHTML = viewBesl();
   else if(curTab==='ant') p.innerHTML = viewAnt();
   else if(curTab==='supp'){ p.innerHTML = viewSupp(); bindSupp(); }
@@ -472,6 +502,86 @@ function viewLab(){
       ${t.not_metni?`<div class="yorum" style="margin-top:14px">${t.not_metni}</div>`:''}
     </div>
   </div>`;
+}
+
+// ===== KOÇ CHAT =====
+let chatGecmis = [];
+
+function viewKocu(){
+  const bos = chatGecmis.length === 0;
+  return `<div class="page on"><div class="chat-wrap">
+    <div class="chat-msgs" id="chatMsgs">
+      ${bos ? `<div class="chat-welcome">
+        <div class="chat-welcome-ic">${I.chat}</div>
+        <h3>Koçunla konuş</h3>
+        <p>Ne yediğini yaz, makroları hesaplayayım.<br>Antrenman geçmişini sor, planlayalım.</p>
+        <div class="chat-chips">
+          <div class="chip" data-chip="Bugün öğlen 4 yumurta, 5 yemek kaşığı yulaf yedim. Makroları nedir?">Öğün analizi</div>
+          <div class="chip" data-chip="Bugün kol günü. İyi bir biceps ve triceps antrenmanı öner.">Antrenman önerisi</div>
+          <div class="chip" data-chip="Yağ yakarken kas korumak için günlük ne kadar protein almalıyım? 94 kiloyum.">Protein hedefi</div>
+        </div>
+      </div>` : chatGecmis.map(m=>`<div class="msg ${m.rol==='kullanici'?'user':'koc'}">${escapeHtml(m.metin)}</div>`).join('')}
+    </div>
+    <div class="chat-input">
+      <textarea id="chatInput" rows="1" placeholder="Koçuna yaz…"></textarea>
+      <button class="chat-send" id="chatSend">${I.send}</button>
+    </div>
+  </div></div>`;
+}
+
+function escapeHtml(s){ return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+function bindChat(){
+  const input = document.getElementById('chatInput');
+  const sendBtn = document.getElementById('chatSend');
+  if(!input) return;
+
+  // Otomatik yükseklik
+  input.addEventListener('input', ()=>{ input.style.height='auto'; input.style.height=Math.min(120,input.scrollHeight)+'px'; });
+  // Enter ile gönder (Shift+Enter satır atlar)
+  input.addEventListener('keydown', e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); gonder(); } });
+  sendBtn.onclick = gonder;
+  // Hazır sorular
+  document.querySelectorAll('.chip').forEach(c=>{
+    c.onclick = ()=>{ input.value=c.dataset.chip; gonder(); };
+  });
+  scrollChat();
+}
+
+function scrollChat(){ const m=document.getElementById('chatMsgs'); if(m) m.scrollTop=m.scrollHeight; }
+
+async function gonder(){
+  const input = document.getElementById('chatInput');
+  const sendBtn = document.getElementById('chatSend');
+  const text = input.value.trim();
+  if(!text) return;
+
+  chatGecmis.push({rol:'kullanici', metin:text});
+  input.value=''; input.style.height='auto';
+  sendBtn.disabled = true;
+
+  // Mesajları yeniden çiz + yazıyor göstergesi
+  const msgs = document.getElementById('chatMsgs');
+  msgs.innerHTML = chatGecmis.map(m=>`<div class="msg ${m.rol==='kullanici'?'user':'koc'}">${escapeHtml(m.metin)}</div>`).join('')
+    + '<div class="msg typing" id="typing"><span></span><span></span><span></span></div>';
+  scrollChat();
+
+  try{
+    const res = await fetch('/.netlify/functions/chat', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ mesaj:text, gecmis: chatGecmis.slice(0,-1) }),
+    });
+    const data = await res.json();
+    const cevap = data.cevap || ('Hata: ' + (data.error || 'bilinmeyen'));
+    chatGecmis.push({rol:'koc', metin:cevap});
+  }catch(e){
+    chatGecmis.push({rol:'koc', metin:'Bağlantı hatası: '+e.message});
+  }
+
+  document.getElementById('chatMsgs').innerHTML = chatGecmis.map(m=>`<div class="msg ${m.rol==='kullanici'?'user':'koc'}">${escapeHtml(m.metin)}</div>`).join('');
+  sendBtn.disabled = false;
+  scrollChat();
 }
 
 loadAll();
