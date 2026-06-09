@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0B0E11">
+<title>Koç · Sağlık Paneli</title>
+<link rel="manifest" href="data:application/json,{%22name%22:%22Ko%C3%A7%22,%22short_name%22:%22Ko%C3%A7%22,%22display%22:%22standalone%22,%22background_color%22:%22%230B0E11%22,%22theme_color%22:%22%230B0E11%22,%22icons%22:[]}">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+:root{
+  --bg:#0B0E11; --bg2:#13181D; --card:#161C22; --card2:#1C242B;
+  --line:#222B33; --line2:#2C3740;
+  --txt:#E8EDF1; --txt2:#8B97A3; --txt3:#5A6570;
+  --green:#2BD89A; --green-d:#1D9E75; --green-bg:rgba(43,216,154,.12);
+  --blue:#4DA8FF; --amber:#F5B544; --coral:#FF7A59; --red:#FF5C5C;
+  --radius:18px; --radius-sm:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:var(--bg); color:var(--txt);
+  min-height:100vh; overflow-x:hidden;
+  background-image:radial-gradient(circle at 50% 0%, rgba(43,216,154,.06), transparent 60%);
+}
+.wrap{max-width:780px; margin:0 auto; padding:20px 16px 100px; position:relative}
+
+/* HEADER */
+.head{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
+.brand{display:flex;align-items:center;gap:10px}
+.brand-dot{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--green),var(--green-d));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:#04120C}
+.brand-name{font-size:17px;font-weight:700;letter-spacing:-.3px}
+.brand-name span{color:var(--green)}
+.head-greet{font-size:12px;color:var(--txt2);margin-top:1px}
+
+/* DATE STRIP */
+.datestrip{display:flex;align-items:center;gap:8px;margin-bottom:20px;position:relative}
+.dnav{width:38px;height:38px;border-radius:11px;background:var(--card);border:1px solid var(--line);color:var(--txt2);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;flex-shrink:0;transition:.18s;user-select:none}
+.dnav:active{transform:scale(.92);background:var(--card2)}
+.dcenter{flex:1;background:var(--card);border:1px solid var(--line);border-radius:13px;padding:9px 16px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:.18s}
+.dcenter:active{transform:scale(.98)}
+.dcenter-day{font-size:15px;font-weight:700;letter-spacing:-.2px}
+.dcenter-sub{font-size:11px;color:var(--txt2)}
+.ddots{display:flex;gap:4px}
+.ddot{width:6px;height:6px;border-radius:50%}
+
+/* CALENDAR POPUP */
+.calwrap{position:absolute;top:46px;left:46px;right:46px;z-index:50;background:var(--card2);border:1px solid var(--line2);border-radius:var(--radius);padding:16px;opacity:0;transform:translateY(-8px) scale(.97);pointer-events:none;transition:.22s cubic-bezier(.2,.8,.2,1)}
+.calwrap.open{opacity:1;transform:none;pointer-events:auto}
+.calhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.caltitle{font-size:14px;font-weight:700}
+.calnav{display:flex;gap:6px}
+.calnav button{width:30px;height:30px;border-radius:9px;background:var(--card);border:1px solid var(--line);color:var(--txt2);cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center}
+.calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.caldow{font-size:10px;color:var(--txt3);text-align:center;padding:4px 0;font-weight:600}
+.calday{aspect-ratio:1;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;border:1px solid transparent;transition:.14s;position:relative;font-size:13px;font-weight:600}
+.calday:active{transform:scale(.9)}
+.calday.has{background:var(--card)}
+.calday.sel{background:var(--green-bg);border-color:var(--green);color:var(--green)}
+.calday.today::after{content:'';position:absolute;bottom:4px;width:4px;height:4px;border-radius:50%;background:var(--green)}
+.calday.other{opacity:.28}
+
+/* TABS */
+.tabs{display:flex;gap:6px;margin-bottom:20px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.tabs::-webkit-scrollbar{display:none}
+.tab{padding:9px 16px;border-radius:12px;background:var(--card);border:1px solid var(--line);color:var(--txt2);font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;transition:.18s;flex-shrink:0;display:flex;align-items:center;gap:6px}
+.tab.on{background:var(--green);border-color:var(--green);color:#04120C}
+.tab svg{width:15px;height:15px}
+
+/* PAGES */
+.page{display:none;animation:slideup .35s cubic-bezier(.2,.8,.2,1)}
+.page.on{display:block}
+@keyframes slideup{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+
+/* HERO METRIC */
+.hero{background:linear-gradient(135deg,var(--card),var(--card2));border:1px solid var(--line);border-radius:var(--radius);padding:22px;margin-bottom:14px;position:relative;overflow:hidden}
+.hero::before{content:'';position:absolute;top:-40%;right:-10%;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle,var(--green-bg),transparent 70%)}
+.hero-label{font-size:12px;color:var(--txt2);margin-bottom:6px;position:relative}
+.hero-val{font-size:46px;font-weight:800;letter-spacing:-2px;line-height:1;position:relative}
+.hero-unit{font-size:18px;color:var(--txt2);font-weight:600}
+.hero-delta{display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:600;margin-top:10px;padding:4px 10px;border-radius:8px;position:relative}
+.hero-delta.down{background:var(--green-bg);color:var(--green)}
+.hero-delta.up{background:rgba(255,92,92,.12);color:var(--red)}
+
+/* STAT GRID */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px}
+.stat-label{font-size:11px;color:var(--txt2);margin-bottom:5px}
+.stat-val{font-size:21px;font-weight:700;letter-spacing:-.5px}
+.stat-val .u{font-size:12px;color:var(--txt2);font-weight:500}
+.stat-val.green{color:var(--green)}.stat-val.amber{color:var(--amber)}
+
+/* CARD */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:14px}
+.ctitle{font-size:13px;font-weight:700;color:var(--txt);margin-bottom:16px;display:flex;align-items:center;gap:8px;letter-spacing:-.2px}
+.ctitle svg{width:16px;height:16px;color:var(--green)}
+
+/* RINGS (macro) */
+.rings{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.ring-item{display:flex;flex-direction:column;align-items:center;gap:8px}
+.ring{position:relative;width:62px;height:62px}
+.ring svg{transform:rotate(-90deg)}
+.ring-pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+.ring-name{font-size:11px;color:var(--txt2)}
+.ring-val{font-size:12px;font-weight:600;color:var(--txt)}
+
+/* YORUM */
+.yorum{border-radius:var(--radius-sm);padding:14px 16px;font-size:13px;line-height:1.65;border-left:3px solid var(--amber);background:rgba(245,181,68,.08);color:#F5D89B}
+
+/* CHART */
+.chart-wrap{position:relative;width:100%;height:230px}
+
+/* OGUN */
+.ogun{background:var(--bg2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px;margin-bottom:10px;transition:.18s}
+.ogun:active{transform:scale(.99)}
+.ohead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.oname{font-size:14px;font-weight:700}
+.okcal{font-size:13px;color:var(--green);font-weight:700}
+.omacro{display:flex;gap:8px;margin-bottom:8px}
+.opill{font-size:11px;padding:3px 9px;border-radius:7px;background:var(--card2);color:var(--txt2);font-weight:600}
+.ofood{font-size:12px;color:var(--txt2);line-height:1.5}
+
+/* ANT */
+.exr{display:flex;justify-content:space-between;align-items:center;padding:13px 0;border-bottom:1px solid var(--line)}
+.exr:last-child{border:none}
+.exr-name{font-size:14px;font-weight:600}
+.exr-badge{font-size:12px;background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:5px 11px;color:var(--txt2);font-weight:600}
+.kard{display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--line)}
+.kard:last-child{border:none}
+.kard-ic{width:38px;height:38px;border-radius:11px;background:var(--green-bg);display:flex;align-items:center;justify-content:center;color:var(--green);flex-shrink:0}
+.kard-ic svg{width:19px;height:19px}
+.kard-name{font-size:14px;font-weight:600;flex:1}
+.kard-meta{font-size:12px;color:var(--txt2)}
+
+/* SUPP */
+.supps{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.supp{display:flex;align-items:center;gap:11px;padding:13px 14px;background:var(--bg2);border:1px solid var(--line);border-radius:13px;cursor:pointer;transition:.16s}
+.supp:active{transform:scale(.97)}
+.supp.on{background:var(--green-bg);border-color:var(--green)}
+.scheck{width:22px;height:22px;border-radius:7px;border:2px solid var(--line2);flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:.16s}
+.supp.on .scheck{background:var(--green);border-color:var(--green)}
+.scheck svg{width:13px;height:13px;color:#04120C;opacity:0;transition:.16s}
+.supp.on .scheck svg{opacity:1}
+.sname{font-size:13px;font-weight:600}
+
+/* LAB */
+.labsum{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.labgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.labitem{background:var(--bg2);border:1px solid var(--line);border-radius:13px;padding:13px}
+.labname{font-size:11px;color:var(--txt2);margin-bottom:5px}
+.labval{font-size:18px;font-weight:700;letter-spacing:-.5px}
+.labval.ok{color:var(--green)}.labval.lo{color:var(--amber)}.labval.hi{color:var(--red)}
+.labref{font-size:10px;color:var(--txt3);margin-top:3px}
+
+/* LOADING + EMPTY */
+.loading{text-align:center;padding:50px 20px;color:var(--txt2);font-size:14px}
+.spinner{width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--green);border-radius:50%;margin:0 auto 14px;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty{text-align:center;padding:40px 20px;color:var(--txt3);font-size:14px}
+.empty svg{width:38px;height:38px;margin-bottom:10px;opacity:.4}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="head">
+    <div class="brand">
+      <div class="brand-dot">K</div>
+      <div>
+        <div class="brand-name">koç<span>.</span></div>
+        <div class="head-greet" id="greet">Hoş geldin</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="datestrip">
+    <div class="dnav" onclick="shiftDay(-1)">‹</div>
+    <div class="dcenter" onclick="toggleCal()">
+      <div>
+        <div class="dcenter-day" id="dDay">—</div>
+        <div class="dcenter-sub" id="dSub">—</div>
+      </div>
+      <div class="ddots" id="dDots"></div>
+    </div>
+    <div class="dnav" onclick="shiftDay(1)">›</div>
+    <div class="calwrap" id="calWrap">
+      <div class="calhead">
+        <div class="caltitle" id="calTitle"></div>
+        <div class="calnav">
+          <button onclick="calMonth(-1);event.stopPropagation()">‹</button>
+          <button onclick="calMonth(1);event.stopPropagation()">›</button>
+        </div>
+      </div>
+      <div class="calgrid" id="calGrid"></div>
+    </div>
+  </div>
+
+  <div class="tabs" id="tabs"></div>
+
+  <div id="pages">
+    <div class="loading"><div class="spinner"></div>Veriler yükleniyor…</div>
+  </div>
+
+</div>
+
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const SB_URL = 'https://lmmhcfqchbirklgrwwtj.supabase.co';
+const SB_KEY = 'BURAYA_KENDI_PUBLISHABLE_KEYINI_YAPISTIR';
+const sb = createClient(SB_URL, SB_KEY);
+
+const MN = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+const DOW = ['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'];
+const DAYNAMES = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
+const HEDEF = { kalori:2600, protein:200, karb:220, yag:75 };
+const SUPPS = ['Whey','Kreatin','Omega 3','D Vitamini','K Vitamini','NMN','Coenzyme Q10','C Vitamini','B12','Magnezyum','Çinko','Bromelain','Resveratrol'];
+
+const I = {
+  chart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>',
+  food:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 2v7c0 1.1.9 2 2 2h0a2 2 0 002-2V2"/><path d="M5 2v20"/><path d="M19 2v20M15 2c0 4 4 4 4 8"/></svg>',
+  dumbbell:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6v12M18 6v12M3 9v6M21 9v6M6 12h12"/></svg>',
+  pill:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="8" rx="4"/><path d="M12 8v8"/></svg>',
+  lab:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 2h6M10 2v6l-4 9a2 2 0 002 3h8a2 2 0 002-3l-4-9V2"/></svg>',
+  brain:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3a3 3 0 00-3 3 3 3 0 00-2 5 3 3 0 002 5 3 3 0 006 0V6a3 3 0 00-3-3z"/></svg>',
+  run:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13" cy="4" r="2"/><path d="M8 21l3-6 3 2 1 4M11 15l-2-5 4-2 2 3 3 1"/></svg>',
+  check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5L20 6"/></svg>',
+  empty:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>',
+};
+
+const TABS = [
+  {id:'ozet', name:'Özet', ic:I.chart},
+  {id:'besl', name:'Beslenme', ic:I.food},
+  {id:'ant', name:'Antrenman', ic:I.dumbbell},
+  {id:'supp', name:'Supplement', ic:I.pill},
+  {id:'lab', name:'Tahlil', ic:I.lab},
+];
+
+let selDate = new Date().toISOString().slice(0,10);
+let curTab = 'ozet';
+let cy = new Date().getFullYear(), cm = new Date().getMonth();
+let calOpen = false;
+let kiloChart = null;
+
+const cache = { olcum:{}, ogun:{}, ant:{}, supp:{}, lab:[], kiloTrend:[], loaded:false };
+
+async function loadAll(){
+  let diag = '';
+  try{
+    const [olcum, ogun, ant, supp, lab] = await Promise.all([
+      sb.from('gunluk_olcum').select('*'),
+      sb.from('ogunler').select('*'),
+      sb.from('antrenmanlar').select('*'),
+      sb.from('supplementler').select('*'),
+      sb.from('tahliller').select('*'),
+    ]);
+    if(olcum.error) diag += 'gunluk_olcum HATA: '+olcum.error.message+' | ';
+    (olcum.data||[]).forEach(r=>cache.olcum[r.tarih]=r);
+    (ogun.data||[]).forEach(r=>{ (cache.ogun[r.tarih]=cache.ogun[r.tarih]||[]).push(r); });
+    (ant.data||[]).forEach(r=>cache.ant[r.tarih]=r);
+    (supp.data||[]).forEach(r=>cache.supp[r.tarih]=r);
+    cache.lab = (lab.data||[]).sort((a,b)=>(b.tarih||'').localeCompare(a.tarih||''));
+    cache.kiloTrend = (olcum.data||[]).filter(r=>r.kilo).sort((a,b)=>a.tarih.localeCompare(b.tarih));
+    cache.loaded = true;
+    diag += 'gunluk_olcum satır: '+(olcum.data||[]).length+' | tarihler: '+(olcum.data||[]).map(r=>r.tarih).join(', ');
+  }catch(e){
+    console.error(e);
+    cache.loaded = true;
+    diag += 'BAĞLANTI HATASI: '+e.message;
+  }
+  // Geçici teşhis bandı
+  const db = document.createElement('div');
+  db.style.cssText = 'background:#1C242B;border:1px solid #2C3740;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:11px;color:#8B97A3;word-break:break-all';
+  db.textContent = '🔧 ' + diag;
+  document.querySelector('.wrap').insertBefore(db, document.getElementById('tabs'));
+  buildTabs();
+  render();
+}
+
+function buildTabs(){
+  document.getElementById('tabs').innerHTML = TABS.map(t=>
+    `<div class="tab${t.id===curTab?' on':''}" data-tab="${t.id}">${t.ic}${t.name}</div>`
+  ).join('');
+  document.querySelectorAll('.tab').forEach(el=>{
+    el.onclick = ()=>{ curTab=el.dataset.tab; buildTabs(); render(); };
+  });
+}
+
+function fmtDay(ds){ const [y,m,d]=ds.split('-'); return `${+d} ${MN[+m-1]}`; }
+function fmtSub(ds){ const dt=new Date(ds); return `${DAYNAMES[dt.getDay()]} · ${ds.split('-')[0]}`; }
+
+function updHeader(){
+  const h = new Date().getHours();
+  document.getElementById('greet').textContent = h<12?'Günaydın':h<18?'İyi günler':'İyi akşamlar';
+  document.getElementById('dDay').textContent = fmtDay(selDate);
+  document.getElementById('dSub').textContent = fmtSub(selDate);
+  const o = cache.olcum[selDate], a = cache.ant[selDate];
+  let dots = '';
+  if(cache.ogun[selDate]||o) dots += '<div class="ddot" style="background:var(--green)"></div>';
+  if(a) dots += '<div class="ddot" style="background:var(--blue)"></div>';
+  document.getElementById('dDots').innerHTML = dots;
+}
+
+window.toggleCal = ()=>{ calOpen=!calOpen; document.getElementById('calWrap').classList.toggle('open',calOpen); if(calOpen) renderCal(); };
+document.addEventListener('click',e=>{ if(calOpen&&!e.target.closest('.datestrip')){ calOpen=false; document.getElementById('calWrap').classList.remove('open'); }});
+window.calMonth = (d)=>{ cm+=d; if(cm<0){cm=11;cy--;} if(cm>11){cm=0;cy++;} renderCal(); };
+
+function renderCal(){
+  document.getElementById('calTitle').textContent = MN[cm]+' '+cy;
+  const g = document.getElementById('calGrid');
+  g.innerHTML = DOW.map(d=>`<div class="caldow">${d}</div>`).join('');
+  let sd = new Date(cy,cm,1).getDay(); sd = sd===0?6:sd-1;
+  const dim = new Date(cy,cm+1,0).getDate();
+  const today = new Date().toISOString().slice(0,10);
+  for(let i=0;i<sd;i++){ const p=new Date(cy,cm,1-sd+i); g.innerHTML+=`<div class="calday other">${p.getDate()}</div>`; }
+  for(let d=1;d<=dim;d++){
+    const ds=`${cy}-${String(cm+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const has = cache.olcum[ds]||cache.ogun[ds]||cache.ant[ds];
+    g.innerHTML+=`<div class="calday${has?' has':''}${ds===selDate?' sel':''}${ds===today?' today':''}" data-d="${ds}">${d}</div>`;
+  }
+  g.querySelectorAll('[data-d]').forEach(el=>{
+    el.onclick=(e)=>{ e.stopPropagation(); selDate=el.dataset.d; calOpen=false; document.getElementById('calWrap').classList.remove('open'); render(); };
+  });
+}
+
+window.shiftDay = (d)=>{ const dt=new Date(selDate); dt.setDate(dt.getDate()+d); selDate=dt.toISOString().slice(0,10); render(); };
+
+function ring(pct,color,size=62){
+  const r=26, c=2*Math.PI*r, off=c*(1-Math.min(1,pct/100));
+  return `<svg width="${size}" height="${size}" viewBox="0 0 62 62">
+    <circle cx="31" cy="31" r="${r}" fill="none" stroke="var(--line)" stroke-width="5"/>
+    <circle cx="31" cy="31" r="${r}" fill="none" stroke="${color}" stroke-width="5" stroke-linecap="round"
+      stroke-dasharray="${c}" stroke-dashoffset="${off}" style="transition:stroke-dashoffset .8s cubic-bezier(.2,.8,.2,1)"/>
+  </svg>`;
+}
+
+function render(){
+  updHeader();
+  const p = document.getElementById('pages');
+  if(!cache.loaded){ return; }
+  if(curTab==='ozet') p.innerHTML = viewOzet();
+  else if(curTab==='besl') p.innerHTML = viewBesl();
+  else if(curTab==='ant') p.innerHTML = viewAnt();
+  else if(curTab==='supp'){ p.innerHTML = viewSupp(); bindSupp(); }
+  else if(curTab==='lab') p.innerHTML = viewLab();
+  if(curTab==='ozet' && cache.kiloTrend.length) setTimeout(drawKilo,50);
+}
+
+function totals(ds){
+  const og = cache.ogun[ds]||[];
+  return {
+    kalori: og.reduce((s,o)=>s+(o.kcal||0),0),
+    protein: og.reduce((s,o)=>s+(o.protein||0),0),
+    karb: og.reduce((s,o)=>s+(o.karb||0),0),
+    yag: og.reduce((s,o)=>s+(o.yag||0),0),
+  };
+}
+
+function viewOzet(){
+  const o = cache.olcum[selDate];
+  const t = totals(selDate);
+  if(!o && t.kalori===0){
+    return `<div class="page on"><div class="empty">${I.empty}<div>Bu gün için veri yok.</div></div></div>`;
+  }
+  const trend = cache.kiloTrend;
+  let delta = 0;
+  if(o && trend.length>1){
+    const idx = trend.findIndex(r=>r.tarih===selDate);
+    if(idx>0) delta = Math.round((o.kilo - trend[idx-1].kilo)*10)/10;
+  }
+  const macros = [
+    ['Protein',t.protein,HEDEF.protein,'var(--green)'],
+    ['Karb',t.karb,HEDEF.karb,'var(--blue)'],
+    ['Yağ',t.yag,HEDEF.yag,'var(--amber)'],
+    ['Kalori',t.kalori,HEDEF.kalori,'var(--coral)'],
+  ];
+  return `<div class="page on">
+    ${o ? `<div class="hero">
+      <div class="hero-label">Güncel ağırlık</div>
+      <div class="hero-val">${o.kilo}<span class="hero-unit"> kg</span></div>
+      ${delta!==0?`<div class="hero-delta ${delta<0?'down':'up'}">${delta<0?'↓':'↑'} ${Math.abs(delta)} kg · önceki ölçüm</div>`:''}
+    </div>`:''}
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Kalori</div><div class="stat-val amber">${t.kalori}</div></div>
+      <div class="stat"><div class="stat-label">Protein</div><div class="stat-val green">${t.protein}<span class="u">g</span></div></div>
+      ${o?`<div class="stat"><div class="stat-label">Yağ oranı</div><div class="stat-val">%${o.yag_orani||'—'}</div></div>`:`<div class="stat"><div class="stat-label">Karb</div><div class="stat-val">${t.karb}<span class="u">g</span></div></div>`}
+    </div>
+    <div class="card">
+      <div class="ctitle">${I.chart} Makro durumu</div>
+      <div class="rings">
+        ${macros.map(([n,v,m,c])=>{const pct=Math.min(100,Math.round(v/m*100));return `<div class="ring-item"><div class="ring">${ring(pct,c)}<div class="ring-pct" style="color:${c}">${pct}%</div></div><div class="ring-name">${n}</div><div class="ring-val">${v}</div></div>`;}).join('')}
+      </div>
+    </div>
+    ${trend.length>1?`<div class="card"><div class="ctitle">${I.chart} Kilo trendi</div><div class="chart-wrap"><canvas id="kiloChart"></canvas></div></div>`:''}
+    ${o&&o.kas_kg?`<div class="stats"><div class="stat"><div class="stat-label">Kas kütlesi</div><div class="stat-val">${o.kas_kg}<span class="u">kg</span></div></div><div class="stat"><div class="stat-label">Su oranı</div><div class="stat-val">%${o.su_orani||'—'}</div></div><div class="stat"><div class="stat-label">Metabolik yaş</div><div class="stat-val">${o.metabolik_yas||'—'}</div></div></div>`:''}
+  </div>`;
+}
+
+function drawKilo(){
+  const el = document.getElementById('kiloChart');
+  if(!el) return;
+  if(kiloChart) kiloChart.destroy();
+  const data = cache.kiloTrend;
+  const vals = data.map(r=>r.kilo);
+  const mn = Math.floor(Math.min(...vals)-1), mx = Math.ceil(Math.max(...vals)+1);
+  kiloChart = new Chart(el,{
+    type:'line',
+    data:{ labels:data.map(r=>{const[,m,d]=r.tarih.split('-');return d+'/'+m;}),
+      datasets:[{data:vals,borderColor:'#2BD89A',borderWidth:2.5,tension:.4,fill:true,
+        backgroundColor:(c)=>{const g=c.chart.ctx.createLinearGradient(0,0,0,230);g.addColorStop(0,'rgba(43,216,154,.25)');g.addColorStop(1,'rgba(43,216,154,0)');return g;},
+        pointBackgroundColor:'#2BD89A',pointBorderColor:'#0B0E11',pointBorderWidth:2,pointRadius:5,pointHoverRadius:7}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{backgroundColor:'#1C242B',borderColor:'#2C3740',borderWidth:1,titleColor:'#8B97A3',bodyColor:'#E8EDF1',padding:10,displayColors:false,callbacks:{label:c=>c.parsed.y+' kg'}}},
+      scales:{y:{min:mn,max:mx,ticks:{color:'#5A6570',font:{size:11},callback:v=>v+' kg'},grid:{color:'rgba(255,255,255,.04)'}},x:{ticks:{color:'#5A6570',font:{size:11}},grid:{display:false}}}}
+  });
+}
+
+function viewBesl(){
+  const og = cache.ogun[selDate]||[];
+  const t = totals(selDate);
+  if(!og.length) return `<div class="page on"><div class="empty">${I.empty}<div>Bu gün öğün kaydı yok.</div></div></div>`;
+  return `<div class="page on">
+    <div class="stats" style="grid-template-columns:repeat(4,1fr)">
+      <div class="stat"><div class="stat-label">Kalori</div><div class="stat-val">${t.kalori}</div></div>
+      <div class="stat"><div class="stat-label">Protein</div><div class="stat-val green">${t.protein}<span class="u">g</span></div></div>
+      <div class="stat"><div class="stat-label">Karb</div><div class="stat-val">${t.karb}<span class="u">g</span></div></div>
+      <div class="stat"><div class="stat-label">Yağ</div><div class="stat-val">${t.yag}<span class="u">g</span></div></div>
+    </div>
+    <div class="card"><div class="ctitle">${I.food} Öğünler</div>
+      ${og.map(o=>`<div class="ogun"><div class="ohead"><div class="oname">${o.ogun||'Öğün'}</div><div class="okcal">${o.kcal||0} kcal</div></div><div class="omacro"><span class="opill">P ${o.protein||0}g</span><span class="opill">K ${o.karb||0}g</span><span class="opill">Y ${o.yag||0}g</span></div>${o.yiyecekler?`<div class="ofood">${o.yiyecekler}</div>`:''}</div>`).join('')}
+    </div>
+  </div>`;
+}
+
+function viewAnt(){
+  const a = cache.ant[selDate];
+  if(!a) return `<div class="page on"><div class="empty">${I.empty}<div>Bu gün antrenman kaydı yok.</div></div></div>`;
+  const egz = a.egzersizler||[], kard = a.kardiyo||[];
+  return `<div class="page on">
+    <div class="card"><div class="ctitle">${I.dumbbell} ${a.tip||'Antrenman'}</div>
+      ${egz.length?egz.map(e=>`<div class="exr"><div class="exr-name">${e.ad||''}</div><div class="exr-badge">${e.log||e.detay||e.set||''}</div></div>`).join(''):'<div class="ofood">Egzersiz detayı yok.</div>'}
+    </div>
+    ${kard.length?`<div class="card"><div class="ctitle">${I.run} Kardiyo</div>
+      ${kard.map(k=>`<div class="kard"><div class="kard-ic">${I.run}</div><div class="kard-name">${k.ad||k.tur||''}</div><div class="kard-meta">${k.sure?k.sure+' dk':''}${k.kcal?' · ~'+k.kcal+' kcal':''}</div></div>`).join('')}
+    </div>`:''}
+  </div>`;
+}
+
+function viewSupp(){
+  const rec = cache.supp[selDate];
+  const checked = rec && rec.alinanlar ? rec.alinanlar : [];
+  return `<div class="page on"><div class="card"><div class="ctitle">${I.pill} Günlük supplementler</div>
+    <div class="supps">${SUPPS.map(s=>`<div class="supp${checked.includes(s)?' on':''}" data-s="${s}"><div class="scheck">${I.check}</div><div class="sname">${s}</div></div>`).join('')}</div>
+  </div></div>`;
+}
+let suppLocal = {};
+function bindSupp(){
+  document.querySelectorAll('.supp').forEach(el=>{
+    el.onclick=()=>{ el.classList.toggle('on'); };
+  });
+}
+
+function viewLab(){
+  if(!cache.lab.length) return `<div class="page on"><div class="empty">${I.empty}<div>Henüz tahlil kaydı yok.</div></div></div>`;
+  const t = cache.lab[0];
+  const deg = t.degerler||[];
+  const anormal = deg.filter(d=>(d.durum||d[3])&&(d.durum||d[3])!=='ok').length;
+  return `<div class="page on">
+    <div class="labsum">
+      <div class="stat"><div class="stat-label">Parametre</div><div class="stat-val">${deg.length}</div></div>
+      <div class="stat"><div class="stat-label">Normal</div><div class="stat-val green">${deg.length-anormal}</div></div>
+      <div class="stat"><div class="stat-label">Dikkat</div><div class="stat-val amber">${anormal}</div></div>
+    </div>
+    <div class="card"><div class="ctitle">${I.lab} ${t.baslik||'Tahlil'} · ${t.tarih||''}</div>
+      <div class="labgrid">${deg.map(d=>{const ad=d.ad||d[0],val=d.deger||d[1],ref=d.referans||d[2],dur=d.durum||d[3]||'ok';return `<div class="labitem"><div class="labname">${ad}</div><div class="labval ${dur}">${val}</div><div class="labref">ref: ${ref}</div></div>`;}).join('')}</div>
+      ${t.not_metni?`<div class="yorum" style="margin-top:14px">${t.not_metni}</div>`:''}
+    </div>
+  </div>`;
+}
+
+loadAll();
+</script>
+</body>
+</html>
