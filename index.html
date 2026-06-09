@@ -570,20 +570,23 @@ async function gonder(){
     const res = await fetch('/.netlify/functions/chat', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ mesaj:text, gecmis: chatGecmis.slice(0,-1) }),
+      body: JSON.stringify({ mesaj:text, tarih: selDate, gecmis: chatGecmis.slice(0,-1) }),
     });
-    
+
     // Asistandan gelen JSON paketini açıyoruz
     const data = await res.json();
     let cevap;
-    
+
     if(data.cevap){
       cevap = data.cevap;
-      
-      // ==== SİHİRLİ ELLER (OTOMATİK SUPABASE KAYDI) ====
-      if(data.kayit && data.kayit.is_food){
-        const yeniOgun = {
-          tarih: selDate, 
+
+      // ==== ÖĞÜN ÖNBELLEĞE EKLE ====
+      // Supabase kaydını SUNUCU (chat.js) service key ile yapıyor (saved=true).
+      // Burada TEKRAR insert ETMİYORUZ — sadece arayüzde anında görünsün diye
+      // kaydedilen öğünü yerel önbelleğe (cache) ekliyoruz.
+      if(data.saved && data.kayit && data.kayit.is_food){
+        const row = data.saved_row || {
+          tarih: selDate,
           ogun: data.kayit.ogun_adi || 'Öğün',
           yiyecekler: data.kayit.yiyecekler || text,
           kcal: data.kayit.kcal || 0,
@@ -591,20 +594,8 @@ async function gonder(){
           karb: data.kayit.karb || 0,
           yag: data.kayit.yag || 0
         };
-        
-        // Supabase'in "ogunler" tablosuna gönder
-        const { error } = await sb.from('ogunler').insert([yeniOgun]);
-        
-        if(!error) {
-          // Sayfa yenilenmeden veriyi görebilmek için uygulamanın önbelleğine (cache) de ekle
-          if(!cache.ogun[selDate]) cache.ogun[selDate] = [];
-          cache.ogun[selDate].push(yeniOgun);
-          
-          // Kullanıcıya kaydın yapıldığına dair ufak bir yeşil onay notu ekle
-          cevap += '\n\n*(✅ Bu öğün günlüğüne eklendi!)*';
-        } else {
-          console.error("Supabase Kayıt Hatası:", error);
-        }
+        const gun = row.tarih || selDate;
+        (cache.ogun[gun] = cache.ogun[gun] || []).push(row);
       }
       // =================================================
 
@@ -612,7 +603,7 @@ async function gonder(){
       cevap = 'Hata detayı: ' + JSON.stringify(data.detay || data.error || data).slice(0, 500);
     }
     chatGecmis.push({rol:'koc', metin:cevap});
-  
+
   }catch(e){
     chatGecmis.push({rol:'koc', metin:'Bağlantı hatası: '+e.message});
   }
