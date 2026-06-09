@@ -573,8 +573,14 @@ async function gonder(){
       body: JSON.stringify({ mesaj:text, gecmis: chatGecmis.slice(0,-1) }),
     });
     const data = await res.json();
-    const cevap = data.cevap || ('Hata: ' + (data.error || 'bilinmeyen'));
+    let cevap;
+    if(data.cevap){
+      cevap = data.cevap;
+    } else {
+      cevap = 'Hata detayı: ' + JSON.stringify(data.detay || data.error || data).slice(0, 500);
+    }
     chatGecmis.push({rol:'koc', metin:cevap});
+ 
   }catch(e){
     chatGecmis.push({rol:'koc', metin:'Bağlantı hatası: '+e.message});
   }
