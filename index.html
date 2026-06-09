@@ -268,11 +268,7 @@ async function loadAll(){
     cache.loaded = true;
     diag += 'BAĞLANTI HATASI: '+e.message;
   }
-  // Geçici teşhis bandı
-  const db = document.createElement('div');
-  db.style.cssText = 'background:#1C242B;border:1px solid #2C3740;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:11px;color:#8B97A3;word-break:break-all';
-  db.textContent = '🔧 ' + diag;
-  document.querySelector('.wrap').insertBefore(db, document.getElementById('tabs'));
+ 
   buildTabs();
   render();
 }
