@@ -8,7 +8,7 @@ exports.handler = async (event) => {
     return { statusCode: 405, body: JSON.stringify({ error: 'Yalnızca POST' }) };
   }
 
-  // BOŞLUK TEMİZLEYİCİ EKLENDİ (.trim)
+  // BOŞLUK TEMİZLEYİCİ (.trim)
   const GEMINI_KEY = (process.env.GEMINI_API_KEY || '').trim();
   if (!GEMINI_KEY) {
     return { statusCode: 500, body: JSON.stringify({ error: 'Gemini key tanımlı değil' }) };
@@ -41,8 +41,8 @@ Sayısal değerler verirken yaklaşık olduklarını belirt.`;
   contents.push({ role: 'user', parts: [{ text: mesaj }] });
 
   try {
-    // MODEL ADI DÜZELTİLDİ: gemini-2.5-flash (Resmi ve Ücretsiz Uç Nokta)
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`;
+    // KESİN ÇÖZÜM: Güncel ve çalışan model (gemini-3.5-flash)
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${GEMINI_KEY}`;
     
     const res = await fetch(url, {
       method: 'POST',
@@ -57,7 +57,7 @@ Sayısal değerler verirken yaklaşık olduklarını belirt.`;
     const data = await res.json();
 
     if (!res.ok) {
-      return { statusCode: 502, body: JSON.stringify({ error: 'Gemini hatası', detay: data }) };
+      return { statusCode: res.status, body: JSON.stringify({ error: 'Gemini hatası', detay: data }) };
     }
 
     const cevap = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Cevap alınamadı.';
