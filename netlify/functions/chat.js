@@ -41,8 +41,8 @@ Sayısal değerler verirken yaklaşık olduklarını belirt.`;
   contents.push({ role: 'user', parts: [{ text: mesaj }] });
 
   try {
-    // MODEL ADI DÜZELTİLDİ: gemini-1.5-flash (Resmi ve Ücretsiz Uç Nokta)
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
+    // MODEL ADI DÜZELTİLDİ: gemini-2.5-flash (Resmi ve Ücretsiz Uç Nokta)
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`;
     
     const res = await fetch(url, {
       method: 'POST',
