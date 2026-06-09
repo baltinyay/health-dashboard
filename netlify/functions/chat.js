@@ -1,34 +1,46 @@
-const fetch = require('node-fetch');
+async function gonder(){
+  const input = document.getElementById('chatInput');
+  const sendBtn = document.getElementById('chatSend');
+  const text = input.value.trim();
+  if(!text) return;
 
-exports.handler = async (event) => {
-  const GEMINI_KEY = process.env.GEMINI_API_KEY;
-  const { mesaj } = JSON.parse(event.body);
+  chatGecmis.push({rol:'kullanici', metin:text});
+  input.value=''; input.style.height='auto';
+  sendBtn.disabled = true;
 
-  // Talimatı tek cümleye indirdik (model yorulmasın diye)
-  const sistemTalimati = "Sen fitness koçusun. Yenenleri analiz et ve makro (kcal,p,k,y) ver. Cevabını sadece şu JSON formatında yaz: {\"cevap\": \"koçluk mesajı\", \"kayit\": { \"is_food\": true, \"ogun_adi\": \"Öğün\", \"yiyecekler\": \"...\", \"kcal\": 0, \"protein\": 0, \"karb\": 0, \"yag\": 0 }}";
+  // Mesajları çiz
+  document.getElementById('chatMsgs').innerHTML = chatGecmis.map(m=>`<div class="msg ${m.rol==='kullanici'?'user':'koc'}">${escapeHtml(m.metin)}</div>`).join('') + '<div class="msg typing" id="typing"><span></span><span></span><span></span></div>';
+  scrollChat();
 
-  try {
-    // 1.5-flash en hızlı modeldir
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
-    
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: sistemTalimati + "\nKullanıcı mesajı: " + mesaj }] }]
-      }),
+  try{
+    const res = await fetch('/.netlify/functions/chat', {
+      method:'POST',
+      body: JSON.stringify({ mesaj:text }),
     });
-
-    const data = await res.json();
-    let text = data.candidates[0].content.parts[0].text;
     
-    // JSON'ı metinden ayıkla (hata ihtimalini sıfırladık)
-    const start = text.indexOf('{');
-    const end = text.lastIndexOf('}');
-    const cleanJson = (start !== -1 && end !== -1) ? text.substring(start, end + 1) : JSON.stringify({cevap: text, kayit: null});
-
-    return { statusCode: 200, body: cleanJson };
-  } catch (e) {
-    return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
+    const data = await res.json();
+    document.getElementById('typing').remove();
+    
+    let cevap = data.cevap || "Hata oluştu.";
+    
+    // Veritabanı kaydı
+    if(data.kayit && data.kayit.is_food){
+      const yeniOgun = { tarih: selDate, ogun: data.kayit.ogun_adi, yiyecekler: data.kayit.yiyecekler, kcal: data.kayit.kcal, protein: data.kayit.protein, karb: data.kayit.karb, yag: data.kayit.yag };
+      const { error } = await sb.from('ogunler').insert([yeniOgun]);
+      if(!error) {
+        if(!cache.ogun[selDate]) cache.ogun[selDate] = [];
+        cache.ogun[selDate].push(yeniOgun);
+        cevap += '\n\n*(✅ Günlüğe eklendi!)*';
+      }
+    }
+    
+    chatGecmis.push({rol:'koc', metin:cevap});
+  } catch(e) {
+    if(document.getElementById('typing')) document.getElementById('typing').remove();
+    chatGecmis.push({rol:'koc', metin:'Bağlantı zaman aşımına uğradı, tekrar dene.'});
   }
-};
+
+  document.getElementById('chatMsgs').innerHTML = chatGecmis.map(m=>`<div class="msg ${m.rol==='kullanici'?'user':'koc'}">${escapeHtml(m.metin)}</div>`).join('');
+  sendBtn.disabled = false;
+  scrollChat();
+}
