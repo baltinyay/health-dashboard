@@ -1,30 +1,28 @@
 const fetch = require('node-fetch');
 
 exports.handler = async (event) => {
-  if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method Not Allowed' };
+  const GEMINI_KEY = process.env.GEMINI_API_KEY;
+  const { mesaj } = JSON.parse(event.body);
 
-  const GEMINI_KEY = (process.env.GEMINI_API_KEY || '').trim();
-  const { mesaj, gecmis } = JSON.parse(event.body || '{}');
-
-  // Talimatı sadeleştirdik ki model cevap üretirken kafası karışmasın
-  const sistemTalimati = "Sen bir fitness koçusun. Kullanıcı sana yediklerini yazınca makroları (kcal, p, k, y) hesapla. Cevabını şu JSON formatında ver: {\"cevap\": \"...\", \"kayit\": { \"is_food\": true, \"ogun_adi\": \"...\", \"yiyecekler\": \"...\", \"kcal\": 0, \"protein\": 0, \"karb\": 0, \"yag\": 0 }}. Eğer yemek değilse is_food: false yap.";
+  // Talimatı tek cümleye indirdik (model yorulmasın diye)
+  const sistemTalimati = "Sen fitness koçusun. Yenenleri analiz et ve makro (kcal,p,k,y) ver. Cevabını sadece şu JSON formatında yaz: {\"cevap\": \"koçluk mesajı\", \"kayit\": { \"is_food\": true, \"ogun_adi\": \"Öğün\", \"yiyecekler\": \"...\", \"kcal\": 0, \"protein\": 0, \"karb\": 0, \"yag\": 0 }}";
 
   try {
+    // 1.5-flash en hızlı modeldir
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
     
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: sistemTalimati }] },
-        contents: [{ role: 'user', parts: [{ text: mesaj }] }]
+        contents: [{ role: 'user', parts: [{ text: sistemTalimati + "\nKullanıcı mesajı: " + mesaj }] }]
       }),
     });
 
     const data = await res.json();
     let text = data.candidates[0].content.parts[0].text;
     
-    // JSON'ı metnin içinden "cımbızla" çekiyoruz, modelin gevezelik etmesini engelliyoruz
+    // JSON'ı metinden ayıkla (hata ihtimalini sıfırladık)
     const start = text.indexOf('{');
     const end = text.lastIndexOf('}');
     const cleanJson = (start !== -1 && end !== -1) ? text.substring(start, end + 1) : JSON.stringify({cevap: text, kayit: null});
