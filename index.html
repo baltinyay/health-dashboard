@@ -276,7 +276,8 @@ let kiloChart = null;
 
 const cache = { olcum:{}, ogun:{}, ant:{}, supp:{}, lab:[], kiloTrend:[], loaded:false };
 
-async function loadAll(){
+async function fetchData(){
+  cache.olcum={}; cache.ogun={}; cache.ant={}; cache.supp={}; cache.lab=[]; cache.kiloTrend=[];
   try{
     const [olcum, ogun, ant, supp, lab] = await Promise.all([
       sb.from('gunluk_olcum').select('*'),
@@ -291,11 +292,14 @@ async function loadAll(){
     (supp.data||[]).forEach(r=>cache.supp[r.tarih]=r);
     cache.lab = (lab.data||[]).sort((a,b)=>(b.tarih||'').localeCompare(a.tarih||''));
     cache.kiloTrend = (olcum.data||[]).filter(r=>r.kilo).sort((a,b)=>a.tarih.localeCompare(b.tarih));
-    cache.loaded = true;
   }catch(e){
     console.error(e);
-    cache.loaded = true;
   }
+  cache.loaded = true;
+}
+
+async function loadAll(){
+  await fetchData();
   buildTabs();
   render();
 }
@@ -572,38 +576,17 @@ async function gonder(){
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ mesaj:text, tarih: selDate, gecmis: chatGecmis.slice(0,-1) }),
     });
-
-    // Asistandan gelen JSON paketini açıyoruz
     const data = await res.json();
     let cevap;
-
     if(data.cevap){
       cevap = data.cevap;
-
-      // ==== ÖĞÜN ÖNBELLEĞE EKLE ====
-      // Supabase kaydını SUNUCU (chat.js) service key ile yapıyor (saved=true).
-      // Burada TEKRAR insert ETMİYORUZ — sadece arayüzde anında görünsün diye
-      // kaydedilen öğünü yerel önbelleğe (cache) ekliyoruz.
-      if(data.saved && data.kayit && data.kayit.is_food){
-        const row = data.saved_row || {
-          tarih: selDate,
-          ogun: data.kayit.ogun_adi || 'Öğün',
-          yiyecekler: data.kayit.yiyecekler || text,
-          kcal: data.kayit.kcal || 0,
-          protein: data.kayit.protein || 0,
-          karb: data.kayit.karb || 0,
-          yag: data.kayit.yag || 0
-        };
-        const gun = row.tarih || selDate;
-        (cache.ogun[gun] = cache.ogun[gun] || []).push(row);
-      }
-      // =================================================
-
+      // Kayıt yapıldıysa tüm veriyi Supabase'den taze çek —
+      // böylece Özet/Beslenme/Antrenman sekmeleri anında güncel olur.
+      if(data.saved){ await fetchData(); }
     } else {
       cevap = 'Hata detayı: ' + JSON.stringify(data.detay || data.error || data).slice(0, 500);
     }
     chatGecmis.push({rol:'koc', metin:cevap});
-
   }catch(e){
     chatGecmis.push({rol:'koc', metin:'Bağlantı hatası: '+e.message});
   }
