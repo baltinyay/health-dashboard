@@ -153,6 +153,28 @@ async function baglamGetir(url, key, tarih) {
 }
 
 async function geminiSor(apiKey, model, mesaj, tarih, baglam, gecmis) {
+  // Yoğunluk (503) durumunda: önce ana modeli 2 kez dene, sonra yedek modele düş.
+  const denemeler = [
+    { m: model, bekle: 0 },
+    { m: model, bekle: 800 },
+    { m: "gemini-2.5-flash-lite", bekle: 600 },
+  ];
+  let sonHata = null;
+  for (const d of denemeler) {
+    if (d.bekle) await new Promise(r => setTimeout(r, d.bekle));
+    try {
+      return await geminiTekDeneme(apiKey, d.m, mesaj, tarih, baglam, gecmis);
+    } catch (e) {
+      sonHata = e;
+      const m = String(e.message || "");
+      // Sadece yoğunluk/geçici hatalarda tekrar dene; diğer hatalarda hemen çık
+      if (!/high demand|UNAVAILABLE|overloaded|503|429/i.test(m)) throw e;
+    }
+  }
+  throw sonHata;
+}
+
+async function geminiTekDeneme(apiKey, model, mesaj, tarih, baglam, gecmis) {
   const sonKilo = baglam.olcumler.length ? baglam.olcumler[baglam.olcumler.length - 1] : null;
 
   const sistem = `Sen kullanıcının kişisel beslenme ve antrenman koçusun. Türkçe konuşursun. Kısa, net, samimi ve motive edici bir dilin var.
