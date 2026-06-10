@@ -223,7 +223,12 @@ Sadece ilgili kayıt alanını doldur, diğerlerini hiç koyma. Kayıt yoksa kay
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: sistem }] },
         contents,
-        generationConfig: { temperature: 0.4, maxOutputTokens: 1000, responseMimeType: "application/json" },
+        generationConfig: {
+          temperature: 0.4,
+          maxOutputTokens: 2000,
+          responseMimeType: "application/json",
+          thinkingConfig: { thinkingBudget: 0 },
+        },
       }),
     }
   );
@@ -242,8 +247,14 @@ Sadece ilgili kayıt alanını doldur, diğerlerini hiç koyma. Kayıt yoksa kay
     if (f >= 0 && l > f) t = t.slice(f, l + 1);
     parsed = JSON.parse(t);
   } catch {
-    // JSON gelmezse düz metin olarak göster
-    return { cevap: raw || "Cevap alınamadı.", kayit_tipi: "yok" };
+    // JSON kesik/bozuksa: içinden "cevap" alanını kurtarmayı dene,
+    // kullanıcıya asla ham JSON gösterme.
+    const m = raw.match(/"cevap"\s*:\s*"((?:[^"\\]|\\.)*)"?/);
+    const kurtarilan = m ? m[1].replace(/\\n/g, "\n").replace(/\\"/g, '"') : null;
+    return {
+      cevap: kurtarilan || "Cevabım yarıda kesildi, lütfen tekrar dener misin?",
+      kayit_tipi: "yok",
+    };
   }
 
   return {
