@@ -1,105 +1,214 @@
 // netlify/functions/chat.js
-// Akıllı koç: Supabase'den kullanıcının verisini okur, Gemini'ye bağlam verir,
-// yemek girişlerini kaydeder, koçluk sorularına geçmişe bakarak cevap verir.
+// YAPIŞTIR-KAYDET-SİL modu. Hesaplama YOK. Sadece formatlı metni ayrıştırır,
+// Supabase'e yazar/siler. Gemini çağrısı yok → aptallaşacak parça yok.
+//
+// DESTEKLENEN GİRİŞLER:
+//
+// 1) ÖĞÜN ekle (| ile ayrılmış):
+//    Akşam | 5 köfte, 6 yk makarna | 520 kcal | P:38 K:55 Y:18
+//    ("kcal" ve "P:/K:/Y:" sırası serbest, eksik olan 0 sayılır)
+//
+// 2) KİLO ekle:
+//    Kilo | 92.3
+//    Kilo | 92.3 | yag:21 kas:53 su:59
+//
+// 3) ANTRENMAN ekle:
+//    Antrenman | Göğüs & Triceps | Bench 80kg 4x8; Incline 30kg 3x10 | Kardiyo: koşu 30dk 300kcal
+//
+// 4) SİLME:
+//    "bugünkü yediklerimi sil"  → o günün tüm öğünleri
+//    "akşam öğününü sil"        → o günün belirtilen öğünü
+//    "kiloyu sil"               → o günün kilo kaydı
+//    "antrenmanı sil"           → o günün antrenmanı
+//    "bugünü tamamen sil"       → o günün her şeyi
 
-exports.handler = async (event) => {
-  if (event.httpMethod !== "POST") {
-    return json({ cevap: "Sadece POST desteklenir.", saved: false });
-  }
-
-  const GEMINI_KEY = process.env.GEMINI_API_KEY;
-  const SB_URL = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
-  const SB_SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
-  const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-
-  if (!GEMINI_KEY) return json({ cevap: "GEMINI_API_KEY tanımlı değil.", saved: false });
-  if (!SB_URL || !SB_SERVICE) return json({ cevap: "Supabase ortam değişkenleri eksik.", saved: false });
-
-  let mesaj, tarih, gecmis;
+exports.handler = async function (event) {
   try {
+    if (event.httpMethod !== "POST") return json({ cevap: "Sadece POST." });
+
     const body = JSON.parse(event.body || "{}");
-    mesaj = String(body.mesaj || "").trim();
-    tarih = String(body.tarih || "").trim() || new Date().toISOString().slice(0, 10);
-    gecmis = Array.isArray(body.gecmis) ? body.gecmis.slice(-10) : [];
-  } catch {
-    return json({ cevap: "Geçersiz istek.", saved: false });
-  }
-  if (!mesaj) return json({ cevap: "Mesaj boş.", saved: false });
+    const mesaj = String(body.mesaj || "").trim();
+    const tarih = String(body.tarih || "").trim() || bugun();
+    if (!mesaj) return json({ cevap: "Mesaj boş." });
 
-  // ---- 1) Supabase'den bağlam verisi çek (son 14 gün) ----
-  const baglam = await baglamGetir(SB_URL, SB_SERVICE, tarih);
+    const SB_URL = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
+    const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
+    if (!SB_URL || !KEY) return json({ cevap: "Supabase ortam değişkenleri eksik." });
 
-  // ---- 2) Gemini'ye sor ----
-  let sonuc;
-  try {
-    sonuc = await geminiSor(GEMINI_KEY, MODEL, mesaj, tarih, baglam, gecmis);
-  } catch (e) {
-    return json({ cevap: "AI hatası: " + e.message, saved: false });
-  }
+    const ctx = { SB_URL, KEY, tarih };
 
-  // ---- 3) Kaydedilecek bir şey varsa Supabase'e yaz ----
-  let saved = false, saveError = null;
+    // ---- SİLME KOMUTU MU? ----
+    const silme = silmeKomutu(mesaj);
+    if (silme) return await silmeYap(ctx, silme, mesaj);
 
-  if (sonuc.kayit_tipi === "ogun" && sonuc.ogun) {
-    const r = await sbInsert(SB_URL, SB_SERVICE, "ogunler", {
-      tarih,
-      ogun: sonuc.ogun.ogun_adi || "Genel",
-      yiyecekler: sonuc.ogun.yiyecekler || mesaj,
-      kcal: num(sonuc.ogun.kcal),
-      protein: num(sonuc.ogun.protein),
-      karb: num(sonuc.ogun.karb),
-      yag: num(sonuc.ogun.yag),
+    // ---- FORMATLI KAYIT MI? ----
+    const tip = girisTipi(mesaj);
+    if (tip === "ogun") return await ogunKaydet(ctx, mesaj);
+    if (tip === "kilo") return await kiloKaydet(ctx, mesaj);
+    if (tip === "antrenman") return await antrenmanKaydet(ctx, mesaj);
+
+    // ---- HİÇBİRİ DEĞİLSE: YÖNLENDİR ----
+    return json({
+      cevap:
+        "Şu formatlardan birini yapıştır:\n\n" +
+        "🍽️ Öğün:\nAkşam | 5 köfte, 6 yk makarna | 520 kcal | P:38 K:55 Y:18\n\n" +
+        "⚖️ Kilo:\nKilo | 92.3\n\n" +
+        "💪 Antrenman:\nAntrenman | Göğüs | Bench 80kg 4x8; Fly 15kg 3x12 | Kardiyo: koşu 30dk 300kcal\n\n" +
+        "🗑️ Silmek için: \"bugünkü yediklerimi sil\", \"kiloyu sil\", \"antrenmanı sil\", \"bugünü tamamen sil\"",
     });
-    saved = r.ok; saveError = r.error;
+  } catch (e) {
+    return json({ cevap: "Hata: " + (e.message || String(e)) });
   }
-
-  if (sonuc.kayit_tipi === "kilo" && sonuc.kilo) {
-    // Aynı güne kilo varsa güncelle, yoksa ekle (upsert)
-    const r = await sbUpsert(SB_URL, SB_SERVICE, "gunluk_olcum", {
-      tarih,
-      kilo: num(sonuc.kilo.kilo, true),
-      ...(sonuc.kilo.yag_orani ? { yag_orani: num(sonuc.kilo.yag_orani, true) } : {}),
-      ...(sonuc.kilo.kas_kg ? { kas_kg: num(sonuc.kilo.kas_kg, true) } : {}),
-      ...(sonuc.kilo.su_orani ? { su_orani: num(sonuc.kilo.su_orani, true) } : {}),
-    }, "tarih");
-    saved = r.ok; saveError = r.error;
-  }
-
-  if (sonuc.kayit_tipi === "antrenman" && sonuc.antrenman) {
-    const r = await sbUpsert(SB_URL, SB_SERVICE, "antrenmanlar", {
-      tarih,
-      tip: sonuc.antrenman.tip || "Antrenman",
-      egzersizler: sonuc.antrenman.egzersizler || [],
-      kardiyo: sonuc.antrenman.kardiyo || [],
-    }, "tarih");
-    saved = r.ok; saveError = r.error;
-  }
-
-  let cevap = sonuc.cevap || "Anladım.";
-  if (saved) cevap += `\n\n✅ ${tarih} tarihine kaydedildi.`;
-  else if (saveError) cevap += "\n\n⚠️ Kayıt yapılamadı: " + saveError;
-
-  return json({ cevap, saved, kayit_tipi: sonuc.kayit_tipi || "yok" });
 };
 
-// ================= YARDIMCILAR =================
+// ================= TİP TESPİTİ =================
 
-function json(payload) {
-  return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) };
+function girisTipi(mesaj) {
+  const ilk = mesaj.split("|")[0].trim().toLowerCase();
+  if (/^kilo/.test(ilk)) return "kilo";
+  if (/^antren|^antrenman/.test(ilk)) return "antrenman";
+  // İçinde | varsa ve kcal/makro geçiyorsa öğün say
+  if (mesaj.includes("|")) return "ogun";
+  return "bilinmiyor";
 }
 
-function num(v, float) {
-  const n = Number(v) || 0;
-  return float ? Math.round(n * 10) / 10 : Math.round(n);
+// ================= ÖĞÜN =================
+
+async function ogunKaydet(ctx, mesaj) {
+  const p = mesaj.split("|").map((s) => s.trim());
+  // p[0]=öğün adı, p[1]=yiyecekler, kalan kısımlarda kcal ve makrolar
+  const ogunAdi = p[0] || "Öğün";
+  const yiyecekler = p[1] || mesaj;
+  const kalan = p.slice(2).join(" ");
+
+  const kcal = sayiBul(kalan, /(\d+)\s*kcal/i) ?? sayiBul(mesaj, /(\d+)\s*kcal/i) ?? 0;
+  const protein = sayiBul(kalan, /p\s*[:=]?\s*(\d+)/i) ?? 0;
+  const karb = sayiBul(kalan, /k\s*[:=]?\s*(\d+)/i) ?? 0;
+  const yag = sayiBul(kalan, /y\s*[:=]?\s*(\d+)/i) ?? 0;
+
+  const r = await sbInsert(ctx, "ogunler", {
+    tarih: ctx.tarih,
+    ogun: ogunAdi,
+    yiyecekler,
+    kcal, protein, karb, yag,
+  });
+
+  if (r.ok)
+    return json({
+      cevap: `✅ ${ogunAdi} kaydedildi (${ctx.tarih})\n${kcal} kcal · P:${protein} K:${karb} Y:${yag}`,
+      saved: true,
+    });
+  return json({ cevap: "⚠️ Kayıt yapılamadı: " + r.error, saved: false });
 }
 
-async function sbFetch(url, key, path, options = {}) {
-  const res = await fetch(`${url}/rest/v1/${path}`, {
+// ================= KİLO =================
+
+async function kiloKaydet(ctx, mesaj) {
+  const p = mesaj.split("|").map((s) => s.trim());
+  const kilo = floatBul(p[1] || "", /(-?\d+(?:[.,]\d+)?)/);
+  if (kilo == null) return json({ cevap: "Kilo değeri okunamadı. Örn: Kilo | 92.3" });
+
+  const detay = p.slice(2).join(" ");
+  const payload = { tarih: ctx.tarih, kilo };
+  const yag = floatBul(detay, /yag\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i);
+  const kas = floatBul(detay, /kas\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i);
+  const su = floatBul(detay, /su\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i);
+  if (yag != null) payload.yag_orani = yag;
+  if (kas != null) payload.kas_kg = kas;
+  if (su != null) payload.su_orani = su;
+
+  const r = await sbUpsert(ctx, "gunluk_olcum", payload, "tarih");
+  if (r.ok) return json({ cevap: `✅ Kilo kaydedildi: ${kilo} kg (${ctx.tarih})`, saved: true });
+  return json({ cevap: "⚠️ Kayıt yapılamadı: " + r.error, saved: false });
+}
+
+// ================= ANTRENMAN =================
+
+async function antrenmanKaydet(ctx, mesaj) {
+  const p = mesaj.split("|").map((s) => s.trim());
+  const tip = p[1] || "Antrenman";
+  const egzMetin = p[2] || "";
+  const kardMetin = (p[3] || "").replace(/^kardiyo\s*[:=]?\s*/i, "");
+
+  const egzersizler = egzMetin
+    ? egzMetin.split(";").map((e) => {
+        const t = e.trim();
+        const ad = t.split(/\s+/)[0] ? t.replace(/\s+\d.*$/, "").trim() : t;
+        const detay = t.replace(ad, "").trim();
+        return { ad: ad || t, detay };
+      }).filter((x) => x.ad)
+    : [];
+
+  const kardiyo = kardMetin
+    ? kardMetin.split(";").map((k) => {
+        const t = k.trim();
+        const sure = sayiBul(t, /(\d+)\s*dk/i) ?? 0;
+        const kcal = sayiBul(t, /(\d+)\s*kcal/i) ?? 0;
+        const ad = t.replace(/\d+\s*dk/i, "").replace(/\d+\s*kcal/i, "").trim() || "Kardiyo";
+        return { ad, sure, kcal };
+      }).filter((x) => x.ad)
+    : [];
+
+  const r = await sbUpsert(ctx, "antrenmanlar", {
+    tarih: ctx.tarih, tip, egzersizler, kardiyo,
+  }, "tarih");
+
+  if (r.ok)
+    return json({
+      cevap: `✅ Antrenman kaydedildi: ${tip} (${ctx.tarih})\n${egzersizler.length} egzersiz, ${kardiyo.length} kardiyo`,
+      saved: true,
+    });
+  return json({ cevap: "⚠️ Kayıt yapılamadı: " + r.error, saved: false });
+}
+
+// ================= SİLME =================
+
+function silmeKomutu(mesaj) {
+  const t = temizle(mesaj);
+  if (!/sil/.test(t)) return null;
+  if (/tamamen|hepsini|her ?seyi|gunu tamamen/.test(t)) return { ne: "hepsi" };
+  if (/kilo|tarti/.test(t)) return { ne: "kilo" };
+  if (/antren/.test(t)) return { ne: "antrenman" };
+  // öğün silme — belirli öğün mü?
+  let ogun = null;
+  if (/kahvalti/.test(t)) ogun = "Kahvaltı";
+  else if (/oglen|ogle/.test(t)) ogun = "Öğlen";
+  else if (/aksam/.test(t)) ogun = "Akşam";
+  else if (/ara ?ogun/.test(t)) ogun = "Ara Öğün";
+  if (/yedik|yemek|ogun|beslenme/.test(t) || ogun) return { ne: "ogun", ogun };
+  return null;
+}
+
+async function silmeYap(ctx, silme, mesaj) {
+  const yapilanlar = [];
+  if (silme.ne === "hepsi" || silme.ne === "ogun") {
+    let path = `ogunler?tarih=eq.${ctx.tarih}`;
+    if (silme.ne === "ogun" && silme.ogun) path += `&ogun=eq.${encodeURIComponent(silme.ogun)}`;
+    const r = await sbDelete(ctx, path);
+    if (r.ok) yapilanlar.push(silme.ogun ? `${silme.ogun} öğünü` : "öğünler");
+  }
+  if (silme.ne === "hepsi" || silme.ne === "kilo") {
+    const r = await sbDelete(ctx, `gunluk_olcum?tarih=eq.${ctx.tarih}`);
+    if (r.ok) yapilanlar.push("kilo");
+  }
+  if (silme.ne === "hepsi" || silme.ne === "antrenman") {
+    const r = await sbDelete(ctx, `antrenmanlar?tarih=eq.${ctx.tarih}`);
+    if (r.ok) yapilanlar.push("antrenman");
+  }
+  if (yapilanlar.length)
+    return json({ cevap: `🗑️ Silindi (${ctx.tarih}): ${yapilanlar.join(", ")}`, saved: true });
+  return json({ cevap: "Silinecek bir şey bulunamadı." });
+}
+
+// ================= SUPABASE =================
+
+async function sbReq(ctx, path, options = {}) {
+  const res = await fetch(`${ctx.SB_URL}/rest/v1/${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      apikey: key,
-      Authorization: `Bearer ${key}`,
+      apikey: ctx.KEY,
+      Authorization: `Bearer ${ctx.KEY}`,
       ...(options.headers || {}),
     },
   });
@@ -109,159 +218,36 @@ async function sbFetch(url, key, path, options = {}) {
   return { ok: res.ok, data, error: res.ok ? null : (data?.message || `HTTP ${res.status}`) };
 }
 
-async function sbInsert(url, key, table, payload) {
-  return sbFetch(url, key, table, {
+async function sbInsert(ctx, table, payload) {
+  return sbReq(ctx, table, {
     method: "POST",
     headers: { Prefer: "return=representation" },
     body: JSON.stringify(payload),
   });
 }
 
-async function sbUpsert(url, key, table, payload, conflictCol) {
-  return sbFetch(url, key, `${table}?on_conflict=${conflictCol}`, {
+async function sbUpsert(ctx, table, payload, conflictCol) {
+  return sbReq(ctx, `${table}?on_conflict=${conflictCol}`, {
     method: "POST",
     headers: { Prefer: "resolution=merge-duplicates,return=representation" },
     body: JSON.stringify(payload),
   });
 }
 
-async function baglamGetir(url, key, tarih) {
-  // Son 14 günün verisi
-  const d = new Date(tarih); d.setDate(d.getDate() - 14);
-  const baslangic = d.toISOString().slice(0, 10);
-
-  const [olcum, ogun, ant] = await Promise.all([
-    sbFetch(url, key, `gunluk_olcum?tarih=gte.${baslangic}&order=tarih.asc&select=tarih,kilo,yag_orani,kas_kg`),
-    sbFetch(url, key, `ogunler?tarih=gte.${baslangic}&order=tarih.asc&select=tarih,ogun,yiyecekler,kcal,protein,karb,yag`),
-    sbFetch(url, key, `antrenmanlar?tarih=gte.${baslangic}&order=tarih.asc&select=tarih,tip,egzersizler,kardiyo`),
-  ]);
-
-  // Bugünün toplamları
-  const bugunOgunler = (ogun.data || []).filter(o => o.tarih === tarih);
-  const t = bugunOgunler.reduce((s, o) => ({
-    kcal: s.kcal + (o.kcal || 0), protein: s.protein + (o.protein || 0),
-    karb: s.karb + (o.karb || 0), yag: s.yag + (o.yag || 0),
-  }), { kcal: 0, protein: 0, karb: 0, yag: 0 });
-
-  return {
-    olcumler: olcum.data || [],
-    ogunler: ogun.data || [],
-    antrenmanlar: ant.data || [],
-    bugunToplam: t,
-    bugunOgunSayisi: bugunOgunler.length,
-  };
+async function sbDelete(ctx, path) {
+  return sbReq(ctx, path, { method: "DELETE", headers: { Prefer: "return=minimal" } });
 }
 
-async function geminiSor(apiKey, model, mesaj, tarih, baglam, gecmis) {
-  // Yoğunluk (503) durumunda: önce ana modeli 2 kez dene, sonra yedek modele düş.
-  const denemeler = [
-    { m: model, bekle: 0 },
-    { m: model, bekle: 800 },
-    { m: "gemini-2.5-flash-lite", bekle: 600 },
-  ];
-  let sonHata = null;
-  for (const d of denemeler) {
-    if (d.bekle) await new Promise(r => setTimeout(r, d.bekle));
-    try {
-      return await geminiTekDeneme(apiKey, d.m, mesaj, tarih, baglam, gecmis);
-    } catch (e) {
-      sonHata = e;
-      const m = String(e.message || "");
-      // Sadece yoğunluk/geçici hatalarda tekrar dene; diğer hatalarda hemen çık
-      if (!/high demand|UNAVAILABLE|overloaded|503|429/i.test(m)) throw e;
-    }
-  }
-  throw sonHata;
+// ================= YARDIMCI =================
+
+function json(p) {
+  return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) };
 }
-
-async function geminiTekDeneme(apiKey, model, mesaj, tarih, baglam, gecmis) {
-  const sonKilo = baglam.olcumler.length ? baglam.olcumler[baglam.olcumler.length - 1] : null;
-
-  const sistem = `Sen kullanıcının kişisel beslenme ve antrenman koçusun. Türkçe konuşursun. Kısa, net, samimi ve motive edici bir dilin var.
-
-KULLANICI PROFİLİ:
-- Hedef: yağ yakımı + kas korunumu
-- Günlük hedefler: ~2600 kcal, 200g protein, 220g karb, 75g yağ
-${sonKilo ? `- Son kilo: ${sonKilo.kilo} kg (${sonKilo.tarih})` : ""}
-
-BUGÜNÜN DURUMU (${tarih}):
-- Şu ana kadar: ${baglam.bugunToplam.kcal} kcal | ${baglam.bugunToplam.protein}g protein | ${baglam.bugunToplam.karb}g karb | ${baglam.bugunToplam.yag}g yağ (${baglam.bugunOgunSayisi} öğün)
-
-SON 14 GÜN VERİSİ (gerektiğinde kullan):
-Kilolar: ${JSON.stringify(baglam.olcumler)}
-Öğünler: ${JSON.stringify(baglam.ogunler.slice(-20))}
-Antrenmanlar: ${JSON.stringify(baglam.antrenmanlar)}
-
-GÖREVLERİN:
-1. Kullanıcı YEMEK yazdıysa (ne yediğini anlatıyorsa): makroları hesapla. Porsiyon belirsizse standart varsay, asla "daha net yaz" deme. Günlük toplamı ve hedefe uzaklığı belirt. Hedefi aştıysa veya yaklaştıysa uyar ("akşamı hafif geç" gibi).
-2. Kullanıcı KİLO/TARTI bildirdiyse ("bugün 92.3 kg" gibi): kaydet, trende göre kısa yorum yap.
-3. Kullanıcı ANTRENMAN bildirdiyse (yaptığı egzersizleri anlatıyorsa): kaydet.
-4. Kullanıcı SORU sorduysa (geçmiş antrenman, öneri, plan): yukarıdaki veriyi kullanarak somut cevap ver. Örn. "geçen kol günümde ne kaldırdım" → antrenman verisinden oku.
-5. Genel sohbet ise doğal cevap ver.
-
-YANIT FORMATI — SADECE şu JSON, markdown yok:
-{
-  "cevap": "kullanıcıya gösterilecek metin",
-  "kayit_tipi": "ogun" | "kilo" | "antrenman" | "yok",
-  "ogun": { "ogun_adi": "Öğlen", "yiyecekler": "...", "kcal": 0, "protein": 0, "karb": 0, "yag": 0 },
-  "kilo": { "kilo": 0, "yag_orani": 0, "kas_kg": 0, "su_orani": 0 },
-  "antrenman": { "tip": "...", "egzersizler": [{"ad":"...","detay":"..."}], "kardiyo": [{"ad":"...","sure":0,"kcal":0}] }
-}
-Sadece ilgili kayıt alanını doldur, diğerlerini hiç koyma. Kayıt yoksa kayit_tipi "yok" olsun.`;
-
-  const contents = [];
-  for (const h of gecmis) {
-    contents.push({ role: h.rol === "kullanici" ? "user" : "model", parts: [{ text: h.metin }] });
-  }
-  contents.push({ role: "user", parts: [{ text: mesaj }] });
-
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: sistem }] },
-        contents,
-        generationConfig: {
-          temperature: 0.4,
-          maxOutputTokens: 2000,
-          responseMimeType: "application/json",
-          thinkingConfig: { thinkingBudget: 0 },
-        },
-      }),
-    }
-  );
-
-  const data = await res.json();
-  if (!res.ok) {
-    const msg = data?.error?.message || JSON.stringify(data).slice(0, 200);
-    throw new Error(msg);
-  }
-
-  const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-  let parsed;
-  try {
-    let t = raw.trim().replace(/^```json/i, "").replace(/^```/, "").replace(/```$/, "").trim();
-    const f = t.indexOf("{"), l = t.lastIndexOf("}");
-    if (f >= 0 && l > f) t = t.slice(f, l + 1);
-    parsed = JSON.parse(t);
-  } catch {
-    // JSON kesik/bozuksa: içinden "cevap" alanını kurtarmayı dene,
-    // kullanıcıya asla ham JSON gösterme.
-    const m = raw.match(/"cevap"\s*:\s*"((?:[^"\\]|\\.)*)"?/);
-    const kurtarilan = m ? m[1].replace(/\\n/g, "\n").replace(/\\"/g, '"') : null;
-    return {
-      cevap: kurtarilan || "Cevabım yarıda kesildi, lütfen tekrar dener misin?",
-      kayit_tipi: "yok",
-    };
-  }
-
-  return {
-    cevap: parsed.cevap || "Anladım.",
-    kayit_tipi: parsed.kayit_tipi || "yok",
-    ogun: parsed.ogun,
-    kilo: parsed.kilo,
-    antrenman: parsed.antrenman,
-  };
+function bugun() { return new Date().toISOString().slice(0, 10); }
+function sayiBul(s, re) { const m = String(s).match(re); return m ? Math.round(Number(m[1])) : null; }
+function floatBul(s, re) { const m = String(s).match(re); return m ? Math.round(Number(String(m[1]).replace(",", ".")) * 10) / 10 : null; }
+function temizle(s) {
+  return String(s || "").toLowerCase()
+    .replaceAll("ı", "i").replaceAll("ğ", "g").replaceAll("ü", "u")
+    .replaceAll("ş", "s").replaceAll("ö", "o").replaceAll("ç", "c");
 }
