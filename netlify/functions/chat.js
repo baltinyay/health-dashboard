@@ -208,7 +208,7 @@ async function antrenmanKaydet(ctx, mesaj) {
   const egzMetin = p[2] || "";
   const kardMetin = (p[3] || "").replace(/^kardiyo\s*[:=]?\s*/i, "");
 
-  const egzersizler = egzMetin
+  let egzersizler = egzMetin
     ? egzMetin.split(";").map((e) => {
         const t = e.trim();
         const ad = t.split(/\s+/)[0] ? t.replace(/\s+\d.*$/, "").trim() : t;
@@ -216,6 +216,16 @@ async function antrenmanKaydet(ctx, mesaj) {
         return { ad: ad || t, detay };
       }).filter((x) => x.ad)
     : [];
+
+  // Hareket adlarını AI ile düzelt (chst press → Chest Press).
+  // Gemini cevap vermezse orijinal haliyle kaydet — veri kaybı olmaz.
+  if (egzersizler.length) {
+    try {
+      egzersizler = await egzersizAdlariniDuzelt(egzersizler);
+    } catch (e) {
+      console.error("Egzersiz düzeltme atlandı:", e.message);
+    }
+  }
 
   const kardiyo = kardMetin
     ? kardMetin.split(";").map((k) => {
@@ -237,6 +247,41 @@ async function antrenmanKaydet(ctx, mesaj) {
       saved: true,
     });
   return json({ cevap: "⚠️ Kayıt yapılamadı: " + r.error, saved: false });
+}
+
+async function egzersizAdlariniDuzelt(egzersizler) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return egzersizler; // key yoksa orijinali döndür
+
+  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const adlar = egzersizler.map((e) => e.ad);
+
+  const prompt = `Aşağıdaki fitness hareket isimlerini standart, doğru yazımlarına çevir (Türkçe veya İngilizce yaygın isimle). Sadece JSON dizi döndür, başka hiçbir şey yazma. Örnek giriş: ["chst press","incln dmbl","lat puldown"] → ["Chest Press","Incline Dumbbell Press","Lat Pulldown"].\n\nGiriş: ${JSON.stringify(adlar)}`;
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: 500, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 } },
+      }),
+    }
+  );
+  if (!res.ok) throw new Error("Gemini " + res.status);
+  const data = await res.json();
+  const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  let duzeltilmis;
+  try {
+    let t = raw.trim().replace(/^```json/i, "").replace(/^```/, "").replace(/```$/, "").trim();
+    duzeltilmis = JSON.parse(t);
+  } catch {
+    return egzersizler; // parse edilemezse orijinal
+  }
+  if (!Array.isArray(duzeltilmis) || duzeltilmis.length !== egzersizler.length) return egzersizler;
+
+  return egzersizler.map((e, i) => ({ ad: duzeltilmis[i] || e.ad, detay: e.detay }));
 }
 
 // ================= SİLME =================
