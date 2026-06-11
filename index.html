@@ -365,8 +365,9 @@ function render(){
   updHeader();
   const p = document.getElementById('pages');
   if(!cache.loaded){ return; }
-  // Koç sekmesinde tarih şeridi gizlensin
-  document.querySelector('.datestrip').style.display = (curTab==='kocu') ? 'none' : 'flex';
+  // Tüm sekmelerde tarih şeridi görünür (Koç dahil) —
+  // böylece hangi güne kayıt/silme yaptığın belli olur.
+  document.querySelector('.datestrip').style.display = 'flex';
   if(curTab==='kocu'){ p.innerHTML = viewKocu(); bindChat(); }
   else if(curTab==='ozet') p.innerHTML = viewOzet();
   else if(curTab==='besl') p.innerHTML = viewBesl();
