@@ -41,6 +41,10 @@ exports.handler = async function (event) {
     const silme = silmeKomutu(mesaj);
     if (silme) return await silmeYap(ctx, silme, mesaj);
 
+    // ---- MARKDOWN RAPOR MU? (Gemini/Claude çıktısı, TOPLAM satırlı) ----
+    const rapor = raporParse(mesaj);
+    if (rapor) return await ogunKaydetDirekt(ctx, rapor);
+
     // ---- FORMATLI KAYIT MI? ----
     const tip = girisTipi(mesaj);
     if (tip === "ogun") return await ogunKaydet(ctx, mesaj);
@@ -60,6 +64,74 @@ exports.handler = async function (event) {
     return json({ cevap: "Hata: " + (e.message || String(e)) });
   }
 };
+
+// ================= MARKDOWN RAPOR =================
+// Gemini/Claude'un ürettiği tablolu raporu anlar. TOPLAM satırından
+// gerçek kcal/protein/karb/yağ değerlerini çeker.
+
+function raporParse(mesaj) {
+  const t = temizle(mesaj);
+  // "toplam" kelimesi + en az bir kcal geçmeli ki rapor sayalım
+  if (!/toplam/.test(t)) return null;
+
+  // TOPLAM satırını bul (markdown tablo satırı veya düz satır)
+  const satirlar = mesaj.split("\n");
+  let toplamSatir = satirlar.find((s) => /toplam/i.test(temizle(s)) && /\d/.test(s));
+  if (!toplamSatir) return null;
+
+  // Satırdaki tüm sayıları sırayla al: [kcal, protein, karb, yag] beklenir
+  const sayilar = (toplamSatir.match(/\d+(?:[.,]\d+)?/g) || []).map((x) =>
+    Math.round(Number(x.replace(",", ".")))
+  );
+  if (!sayilar.length) return null;
+
+  // En büyük sayı kcal'dir (genelde), kalanlar makro.
+  // Markdown tabloda sıra: kcal | protein | karb | yag
+  let kcal = 0, protein = 0, karb = 0, yag = 0;
+  const kcalMatch = toplamSatir.match(/(\d+)\s*kcal/i);
+  if (kcalMatch) {
+    kcal = Number(kcalMatch[1]);
+    // kcal'den sonra gelen ilk 3 sayı: protein, karb, yag
+    const sonra = toplamSatir.slice(toplamSatir.indexOf(kcalMatch[0]) + kcalMatch[0].length);
+    const s2 = (sonra.match(/\d+(?:[.,]\d+)?/g) || []).map((x) => Math.round(Number(x.replace(",", "."))));
+    [protein, karb, yag] = [s2[0] || 0, s2[1] || 0, s2[2] || 0];
+  } else {
+    // kcal etiketi yoksa: ilk sayı kcal, sonraki üçü makro
+    [kcal, protein, karb, yag] = [sayilar[0] || 0, sayilar[1] || 0, sayilar[2] || 0, sayilar[3] || 0];
+  }
+
+  if (kcal <= 0) return null;
+
+  // Öğün adı: başlıkta "kahvaltı/öğlen/akşam" geçiyor mu?
+  let ogun = "Öğün";
+  if (/kahvalti/.test(t)) ogun = "Kahvaltı";
+  else if (/oglen|ogle/.test(t)) ogun = "Öğlen";
+  else if (/aksam/.test(t)) ogun = "Akşam";
+  else if (/ara ?ogun/.test(t)) ogun = "Ara Öğün";
+
+  // Yiyecekler: tablodaki **kalın** isimleri topla
+  const isimler = [...mesaj.matchAll(/\*\*(.+?)\*\*/g)]
+    .map((m) => m[1].trim())
+    .filter((x) => !/toplam/i.test(x) && !/\d+\s*kcal/i.test(x) && x.length < 50);
+  const yiyecekler = isimler.length ? isimler.join(", ") : "Çeşitli besinler";
+
+  return { ogun, yiyecekler, kcal, protein, karb, yag };
+}
+
+async function ogunKaydetDirekt(ctx, r) {
+  const res = await sbInsert(ctx, "ogunler", {
+    tarih: ctx.tarih,
+    ogun: r.ogun,
+    yiyecekler: r.yiyecekler,
+    kcal: r.kcal, protein: r.protein, karb: r.karb, yag: r.yag,
+  });
+  if (res.ok)
+    return json({
+      cevap: `✅ ${r.ogun} kaydedildi (${ctx.tarih})\n${r.kcal} kcal · P:${r.protein} K:${r.karb} Y:${r.yag}\n${r.yiyecekler}`,
+      saved: true,
+    });
+  return json({ cevap: "⚠️ Kayıt yapılamadı: " + res.error, saved: false });
+}
 
 // ================= TİP TESPİTİ =================
 
