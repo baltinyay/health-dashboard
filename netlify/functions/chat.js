@@ -112,7 +112,13 @@ function raporParse(mesaj) {
   // Yiyecekler: tablodaki **kalın** isimleri topla
   const isimler = [...mesaj.matchAll(/\*\*(.+?)\*\*/g)]
     .map((m) => m[1].trim())
-    .filter((x) => !/toplam/i.test(x) && !/\d+\s*kcal/i.test(x) && x.length < 50);
+    .filter((x) =>
+      !/toplam/i.test(x) &&            // TOPLAM satırı değil
+      !/\d+\s*kcal/i.test(x) &&        // kalori değeri değil
+      !/^[\d.,\s]+$/.test(x) &&        // sadece sayı değil (30, 102, 59)
+      !/degerlendirme|durum|analiz|gunluk/i.test(temizle(x)) && // başlık değil
+      x.length < 50
+    );
   const yiyecekler = isimler.length ? isimler.join(", ") : "Çeşitli besinler";
 
   return { ogun, yiyecekler, kcal, protein, karb, yag };
@@ -240,10 +246,21 @@ function silmeKomutu(mesaj) {
   if (mesaj.includes("|")) return null;
 
   const t = temizle(mesaj);
-  // "sil" kelimesi bir kelime olarak geçmeli (silah, silindir gibi şeyleri yakalamasın)
+  // "sil" kelimesi bir kelime olarak geçmeli
   if (!/\bsil\b|siler|silmek|sildim ?mi|sil$/.test(t)) return null;
 
   if (/tamamen|hepsini|her ?seyi/.test(t)) return { ne: "hepsi" };
+
+  // ---- "X DIŞINDAKİ / X HARİÇ" öğün silme ----
+  if (/disinda|haric|disindaki|haricindeki/.test(t)) {
+    let koru = null;
+    if (/kahvalti/.test(t)) koru = "Kahvaltı";
+    else if (/oglen|ogle/.test(t)) koru = "Öğlen";
+    else if (/aksam/.test(t)) koru = "Akşam";
+    else if (/ara ?ogun/.test(t)) koru = "Ara Öğün";
+    if (koru) return { ne: "ogun_haric", koru };
+  }
+
   if (/kilo|tarti/.test(t)) return { ne: "kilo" };
   if (/antren/.test(t)) return { ne: "antrenman" };
 
@@ -258,6 +275,14 @@ function silmeKomutu(mesaj) {
 
 async function silmeYap(ctx, silme, mesaj) {
   const yapilanlar = [];
+
+  // "X dışındaki öğünleri sil" — korunan hariç hepsini sil
+  if (silme.ne === "ogun_haric") {
+    const r = await sbDelete(ctx, `ogunler?tarih=eq.${ctx.tarih}&ogun=neq.${encodeURIComponent(silme.koru)}`);
+    if (r.ok) return json({ cevap: `🗑️ Silindi (${ctx.tarih}): ${silme.koru} dışındaki öğünler`, saved: true });
+    return json({ cevap: "⚠️ Silme yapılamadı: " + r.error });
+  }
+
   if (silme.ne === "hepsi" || silme.ne === "ogun") {
     let path = `ogunler?tarih=eq.${ctx.tarih}`;
     if (silme.ne === "ogun" && silme.ogun) path += `&ogun=eq.${encodeURIComponent(silme.ogun)}`;
