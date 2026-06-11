@@ -164,12 +164,17 @@ async function antrenmanKaydet(ctx, mesaj) {
 // ================= SİLME =================
 
 function silmeKomutu(mesaj) {
+  // Formatlı kayıt (| içeren) ASLA silme değildir — önce bunu ele.
+  if (mesaj.includes("|")) return null;
+
   const t = temizle(mesaj);
-  if (!/sil/.test(t)) return null;
-  if (/tamamen|hepsini|her ?seyi|gunu tamamen/.test(t)) return { ne: "hepsi" };
+  // "sil" kelimesi bir kelime olarak geçmeli (silah, silindir gibi şeyleri yakalamasın)
+  if (!/\bsil\b|siler|silmek|sildim ?mi|sil$/.test(t)) return null;
+
+  if (/tamamen|hepsini|her ?seyi/.test(t)) return { ne: "hepsi" };
   if (/kilo|tarti/.test(t)) return { ne: "kilo" };
   if (/antren/.test(t)) return { ne: "antrenman" };
-  // öğün silme — belirli öğün mü?
+
   let ogun = null;
   if (/kahvalti/.test(t)) ogun = "Kahvaltı";
   else if (/oglen|ogle/.test(t)) ogun = "Öğlen";
