@@ -187,6 +187,30 @@ body{
 .chat-send:active{transform:scale(.92)}
 .chat-send:disabled{opacity:.4;cursor:not-allowed}
 .chat-send svg{width:19px;height:19px}
+
+/* ANTRENMAN DEFTERİ */
+.agrp{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);margin-bottom:10px;overflow:hidden}
+.agrph{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;cursor:pointer;transition:.15s}
+.agrph.on{background:var(--green-bg)}
+.agrpn{font-size:15px;font-weight:700;display:flex;align-items:center;gap:9px}
+.agrpn svg{color:var(--green);width:18px;height:18px}
+.agrpc{font-size:12px;color:var(--txt2);display:flex;align-items:center;gap:6px}
+.aexs{display:none;padding:0 12px 10px}
+.aexs.open{display:block}
+.aex{padding:12px 8px;border-top:1px solid var(--line)}
+.aexn{font-size:13px;font-weight:600;margin-bottom:9px}
+.asets{display:flex;gap:8px;align-items:flex-end}
+.asetbox{flex:1;display:flex;flex-direction:column;gap:4px}
+.asetbox label{font-size:10px;color:var(--txt3);text-transform:uppercase;letter-spacing:.3px}
+.asetbox input{background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px;color:var(--txt);font-size:15px;font-weight:600;text-align:center;width:100%;font-family:inherit}
+.asetbox input:focus{border-color:var(--green);outline:none}
+.asetbox input.dolu{border-color:var(--green-d)}
+.asaveb{width:100%;background:var(--green);color:#04120C;border:none;border-radius:var(--radius-sm);padding:15px;font-size:15px;font-weight:700;cursor:pointer;margin-top:6px;display:flex;align-items:center;justify-content:center;gap:8px;transition:.15s}
+.asaveb:active{transform:scale(.98)}
+.asaveb:disabled{opacity:.5}
+.asaveb svg{width:18px;height:18px}
+.atip-input{width:100%;background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 14px;color:var(--txt);font-size:14px;font-family:inherit;margin-bottom:12px}
+.atip-input:focus{border-color:var(--green);outline:none}
 </style>
 </head>
 <body>
@@ -245,6 +269,15 @@ const DAYNAMES = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','C
 const HEDEF = { kalori:2600, protein:200, karb:220, yag:75 };
 const SUPPS = ['Whey','Kreatin','Omega 3','D Vitamini','K Vitamini','NMN','Coenzyme Q10','C Vitamini','B12','Magnezyum','Çinko','Bromelain','Resveratrol'];
 
+const KAS_GRUPLARI = [
+  { ad:'Göğüs', hareketler:['Barbell Bench Press','Dumbbell Bench Press','Incline Bench Press','Incline Dumbbell Press','Dumbbell Fly','Cable Crossover','Pec Deck Fly'] },
+  { ad:'Sırt', hareketler:['Wide-Grip Lat Pulldown','Close-Grip Lat Pulldown','Chest-Supported T-Bar Row','Machine Row','Seated Cable Row'] },
+  { ad:'Omuz', hareketler:['Shoulder Press','Dumbbell Lateral Raise','Cable Lateral Raise','Reverse Pec Deck','Cable Y Raise'] },
+  { ad:'Biceps', hareketler:['Barbell Bicep Curl','Dumbbell Hammer Curl','Cable Curl'] },
+  { ad:'Triceps', hareketler:['Triceps Pushdown','Skullcrusher','Overhead Triceps Extension'] },
+  { ad:'Bacak', hareketler:['Barbell Squat','Leg Press','Leg Extension','Leg Curl'] },
+];
+
 const I = {
   chart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>',
   food:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 2v7c0 1.1.9 2 2 2h0a2 2 0 002-2V2"/><path d="M5 2v20"/><path d="M19 2v20M15 2c0 4 4 4 4 8"/></svg>',
@@ -257,6 +290,7 @@ const I = {
   empty:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>',
   chat:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>',
   send:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>',
+  save:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>',
 };
 
 const TABS = [
@@ -371,7 +405,7 @@ function render(){
   if(curTab==='kocu'){ p.innerHTML = viewKocu(); bindChat(); }
   else if(curTab==='ozet') p.innerHTML = viewOzet();
   else if(curTab==='besl') p.innerHTML = viewBesl();
-  else if(curTab==='ant') p.innerHTML = viewAnt();
+  else if(curTab==='ant'){ p.innerHTML = viewAnt(); bindAnt(); }
   else if(curTab==='supp'){ p.innerHTML = viewSupp(); bindSupp(); }
   else if(curTab==='lab') p.innerHTML = viewLab();
   if(curTab==='ozet' && cache.kiloTrend.length) setTimeout(drawKilo,50);
@@ -464,6 +498,103 @@ function viewBesl(){
 }
 
 function viewAnt(){
+  // Seçili günün kayıtlı verisini al, hareketlere göre eşle
+  const a = cache.ant[selDate];
+  const kayitli = {};
+  if(a && Array.isArray(a.egzersizler)){
+    a.egzersizler.forEach(e=>{ if(e.ad) kayitli[e.ad] = e; });
+  }
+  const tipDeger = a && a.tip ? a.tip : '';
+
+  let html = `<div class="page on">
+    <input class="atip-input" id="antTip" placeholder="Antrenman adı (örn. Push, Göğüs günü)" value="${tipDeger.replace(/"/g,'&quot;')}">`;
+
+  KAS_GRUPLARI.forEach((grup,gi)=>{
+    const doluSayisi = grup.hareketler.filter(h=>kayitli[h]).length;
+    html += `<div class="agrp">
+      <div class="agrph${doluSayisi?' on':''}" data-grup="${gi}">
+        <div class="agrpn">${I.dumbbell} ${grup.ad}</div>
+        <div class="agrpc">${grup.hareketler.length} hareket${doluSayisi?` · ${doluSayisi} dolu`:''} <span class="acaret">▸</span></div>
+      </div>
+      <div class="aexs${doluSayisi?' open':''}">`;
+    grup.hareketler.forEach(h=>{
+      const k = kayitli[h] || {};
+      html += `<div class="aex">
+        <div class="aexn">${h}</div>
+        <div class="asets">
+          <div class="asetbox"><label>Ağırlık (kg)</label><input type="text" inputmode="decimal" data-h="${h}" data-f="kg" value="${k.kg??''}" placeholder="0"></div>
+          <div class="asetbox"><label>Tekrar</label><input type="text" inputmode="numeric" data-h="${h}" data-f="tekrar" value="${k.tekrar??''}" placeholder="0"></div>
+          <div class="asetbox"><label>Set</label><input type="text" inputmode="numeric" data-h="${h}" data-f="set" value="${k.set??''}" placeholder="0"></div>
+        </div>
+      </div>`;
+    });
+    html += `</div></div>`;
+  });
+
+  html += `<button class="asaveb" id="antSave">${I.save} Antrenmanı Kaydet</button></div>`;
+  return html;
+}
+
+function bindAnt(){
+  // Grup aç/kapa
+  document.querySelectorAll('.agrph').forEach(h=>{
+    h.onclick = ()=>{
+      const exs = h.nextElementSibling;
+      const acik = exs.classList.toggle('open');
+      h.classList.toggle('on', acik || exs.querySelector('input.dolu'));
+    };
+  });
+  // Dolu kutuları işaretle
+  document.querySelectorAll('.asetbox input').forEach(inp=>{
+    if(inp.value.trim()) inp.classList.add('dolu');
+    inp.addEventListener('input', ()=>{ inp.classList.toggle('dolu', inp.value.trim()!==''); });
+  });
+  // Kaydet
+  const btn = document.getElementById('antSave');
+  if(btn) btn.onclick = antKaydet;
+}
+
+async function antKaydet(){
+  const btn = document.getElementById('antSave');
+  btn.disabled = true; btn.textContent = 'Kaydediliyor…';
+
+  const tip = document.getElementById('antTip').value.trim() || 'Antrenman';
+  const toplam = {};
+  document.querySelectorAll('.asetbox input').forEach(inp=>{
+    const h = inp.dataset.h, f = inp.dataset.f, v = inp.value.trim().replace(',','.');
+    if(v==='') return;
+    toplam[h] = toplam[h] || { ad:h };
+    toplam[h][f] = f==='kg' ? parseFloat(v) : parseInt(v,10);
+  });
+  const egzersizler = Object.values(toplam).map(e=>{
+    const parca = [];
+    if(e.kg!=null && !isNaN(e.kg)) parca.push(e.kg+'kg');
+    if(e.set!=null && !isNaN(e.set)) parca.push(e.set+'x'+(e.tekrar??''));
+    else if(e.tekrar!=null && !isNaN(e.tekrar)) parca.push(e.tekrar+' tekrar');
+    return { ad:e.ad, kg:e.kg, tekrar:e.tekrar, set:e.set, detay:parca.join(' · ') };
+  });
+
+  if(!egzersizler.length){
+    btn.disabled=false; btn.innerHTML = `${I.save} Antrenmanı Kaydet`;
+    alert('En az bir harekete değer gir.');
+    return;
+  }
+
+  try{
+    // upsert: aynı güne tek antrenman satırı
+    const { error } = await sb.from('antrenmanlar')
+      .upsert({ tarih:selDate, tip, egzersizler, kardiyo: (cache.ant[selDate]?.kardiyo)||[] }, { onConflict:'tarih' });
+    if(error) throw error;
+    await fetchData();
+    btn.innerHTML = `${I.check} Kaydedildi!`;
+    setTimeout(()=>{ render(); }, 700);
+  }catch(e){
+    btn.disabled=false; btn.innerHTML = `${I.save} Antrenmanı Kaydet`;
+    alert('Kayıt hatası: '+(e.message||e));
+  }
+}
+
+function viewAntOld(){
   const a = cache.ant[selDate];
   if(!a) return `<div class="page on"><div class="empty">${I.empty}<div>Bu gün antrenman kaydı yok.</div></div></div>`;
   const egz = a.egzersizler||[], kard = a.kardiyo||[];
@@ -471,9 +602,6 @@ function viewAnt(){
     <div class="card"><div class="ctitle">${I.dumbbell} ${a.tip||'Antrenman'}</div>
       ${egz.length?egz.map(e=>`<div class="exr"><div class="exr-name">${e.ad||''}</div><div class="exr-badge">${e.log||e.detay||e.set||''}</div></div>`).join(''):'<div class="ofood">Egzersiz detayı yok.</div>'}
     </div>
-    ${kard.length?`<div class="card"><div class="ctitle">${I.run} Kardiyo</div>
-      ${kard.map(k=>`<div class="kard"><div class="kard-ic">${I.run}</div><div class="kard-name">${k.ad||k.tur||''}</div><div class="kard-meta">${k.sure?k.sure+' dk':''}${k.kcal?' · ~'+k.kcal+' kcal':''}</div></div>`).join('')}
-    </div>`:''}
   </div>`;
 }
 
