@@ -424,7 +424,9 @@ function totals(ds){
 function viewOzet(){
   const o = cache.olcum[selDate];
   const t = totals(selDate);
-  if(!o && t.kalori===0){
+  const a = cache.ant[selDate];
+  const antVar = a && Array.isArray(a.egzersizler) && a.egzersizler.length;
+  if(!o && t.kalori===0 && !antVar){
     return `<div class="page on"><div class="empty">${I.empty}<div>Bu gün için veri yok.</div></div></div>`;
   }
   const trend = cache.kiloTrend;
@@ -458,6 +460,35 @@ function viewOzet(){
     </div>
     ${trend.length>1?`<div class="card"><div class="ctitle">${I.chart} Kilo trendi</div><div class="chart-wrap"><canvas id="kiloChart"></canvas></div></div>`:''}
     ${o&&o.kas_kg?`<div class="stats"><div class="stat"><div class="stat-label">Kas kütlesi</div><div class="stat-val">${o.kas_kg}<span class="u">kg</span></div></div><div class="stat"><div class="stat-label">Su oranı</div><div class="stat-val">%${o.su_orani||'—'}</div></div><div class="stat"><div class="stat-label">Metabolik yaş</div><div class="stat-val">${o.metabolik_yas||'—'}</div></div></div>`:''}
+    ${ozetAntrenman()}
+    ${ozetOgunler()}
+  </div>`;
+}
+
+function ozetAntrenman(){
+  const a = cache.ant[selDate];
+  if(!a || !Array.isArray(a.egzersizler) || !a.egzersizler.length) return '';
+  const egz = a.egzersizler;
+  return `<div class="card">
+    <div class="ctitle">${I.dumbbell} Antrenman <span style="margin-left:auto;font-size:11px;color:var(--txt2);font-weight:500">${a.tip||''} · ${egz.length} hareket</span></div>
+    ${egz.map(e=>{
+      const detay = e.detay || [e.kg!=null?e.kg+' kg':'', (e.set!=null||e.tekrar!=null)?`${e.set||''}×${e.tekrar||''}`:''].filter(Boolean).join(' · ');
+      return `<div class="exr"><div class="exr-name">${e.ad||''}</div><div class="exr-badge">${detay||'—'}</div></div>`;
+    }).join('')}
+    ${Array.isArray(a.kardiyo)&&a.kardiyo.length?a.kardiyo.map(k=>`<div class="exr"><div class="exr-name">${I.run} ${k.ad||'Kardiyo'}</div><div class="exr-badge">${k.sure?k.sure+' dk':''}${k.kcal?' · '+k.kcal+' kcal':''}</div></div>`).join(''):''}
+  </div>`;
+}
+
+function ozetOgunler(){
+  const og = cache.ogun[selDate]||[];
+  if(!og.length) return '';
+  const t = totals(selDate);
+  return `<div class="card">
+    <div class="ctitle">${I.food} Öğünler <span style="margin-left:auto;font-size:11px;color:var(--txt2);font-weight:500">${og.length} öğün · ${t.kalori} kcal</span></div>
+    ${og.map(o=>`<div class="osog-row" style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)">
+      <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">${o.ogun||'Öğün'}</div>${o.yiyecekler?`<div style="font-size:11px;color:var(--txt2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.yiyecekler}</div>`:''}</div>
+      <div style="font-size:13px;color:var(--green);font-weight:700;margin-left:10px;flex-shrink:0">${o.kcal||0} kcal</div>
+    </div>`).join('')}
   </div>`;
 }
 
