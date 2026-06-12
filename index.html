@@ -594,17 +594,6 @@ async function antKaydet(){
   }
 }
 
-function viewAntOld(){
-  const a = cache.ant[selDate];
-  if(!a) return `<div class="page on"><div class="empty">${I.empty}<div>Bu gün antrenman kaydı yok.</div></div></div>`;
-  const egz = a.egzersizler||[], kard = a.kardiyo||[];
-  return `<div class="page on">
-    <div class="card"><div class="ctitle">${I.dumbbell} ${a.tip||'Antrenman'}</div>
-      ${egz.length?egz.map(e=>`<div class="exr"><div class="exr-name">${e.ad||''}</div><div class="exr-badge">${e.log||e.detay||e.set||''}</div></div>`).join(''):'<div class="ofood">Egzersiz detayı yok.</div>'}
-    </div>
-  </div>`;
-}
-
 function viewSupp(){
   const rec = cache.supp[selDate];
   const checked = rec && rec.alinanlar ? rec.alinanlar : [];
