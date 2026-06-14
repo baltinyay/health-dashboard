@@ -251,6 +251,9 @@ body{
 .lab-row-dur.ok{background:var(--green-bg);color:var(--green)}
 .lab-row-sub{display:flex;gap:14px;margin-top:5px;font-size:11px;color:var(--txt3)}
 .lab-row-onceki{color:var(--txt2)}
+.lab-filt{cursor:pointer;transition:.15s;border:1px solid var(--line)}
+.lab-filt:active{transform:scale(.96)}
+.lab-filt.aktif{border-color:var(--green);background:var(--green-bg)}
 </style>
 </head>
 <body>
@@ -775,12 +778,11 @@ function bindSupp(){
 }
 
 let seciliTahlilId = null; // seçili tahlil (yoksa en son)
+let labFiltre = 'hepsi'; // hepsi | normal | dikkat
 
 function viewLab(){
   if(!cache.lab.length) return `<div class="page on"><div class="empty">${I.empty}<div>Henüz tahlil kaydı yok.<br><span style="font-size:12px;opacity:.7">Koç sekmesinden 📷 ile tahlil PDF'i yükle.</span></div></div></div>`;
 
-  // cache.lab zaten tarihe göre azalan sıralı (en yeni başta)
-  // Seçili tahlil: id eşleşen, yoksa en sonuncu (ilk eleman)
   let t = cache.lab[0];
   if(seciliTahlilId){
     const bulunan = cache.lab.find(x=>String(x.id)===String(seciliTahlilId));
@@ -790,22 +792,27 @@ function viewLab(){
   const dusuk = deg.filter(d=>(d.durum||'ok')==='lo').length;
   const yuksek = deg.filter(d=>(d.durum||'ok')==='hi').length;
   const normal = deg.length - dusuk - yuksek;
+  const dikkat = dusuk + yuksek;
 
-  // Tarih seçici (dropdown)
+  // Filtreye göre gösterilecek değerler
+  let gosterilen = deg;
+  if(labFiltre==='normal') gosterilen = deg.filter(d=>(d.durum||'ok')==='ok');
+  else if(labFiltre==='dikkat') gosterilen = deg.filter(d=>(d.durum||'ok')!=='ok');
+
   const secenekler = cache.lab.map(x=>`<option value="${x.id}" ${String(x.id)===String(t.id)?'selected':''}>${fmtDay(x.tarih)} ${x.tarih.split('-')[0]} · ${(x.degerler||[]).length} değer</option>`).join('');
 
   return `<div class="page on">
     <select class="lab-select" id="labSelect">${secenekler}</select>
 
     <div class="labsum">
-      <div class="stat"><div class="stat-label">Parametre</div><div class="stat-val">${deg.length}</div></div>
-      <div class="stat"><div class="stat-label">Normal</div><div class="stat-val green">${normal}</div></div>
-      <div class="stat"><div class="stat-label">Dikkat</div><div class="stat-val amber">${dusuk+yuksek}</div></div>
+      <div class="stat lab-filt ${labFiltre==='hepsi'?'aktif':''}" data-filt="hepsi"><div class="stat-label">Parametre</div><div class="stat-val">${deg.length}</div></div>
+      <div class="stat lab-filt ${labFiltre==='normal'?'aktif':''}" data-filt="normal"><div class="stat-label">Normal</div><div class="stat-val green">${normal}</div></div>
+      <div class="stat lab-filt ${labFiltre==='dikkat'?'aktif':''}" data-filt="dikkat"><div class="stat-label">Dikkat</div><div class="stat-val amber">${dikkat}</div></div>
     </div>
 
-    <div class="card"><div class="ctitle">${I.lab} ${t.baslik||'Tahlil'} · ${fmtDay(t.tarih)}</div>
+    <div class="card"><div class="ctitle">${I.lab} ${t.baslik||'Tahlil'} · ${fmtDay(t.tarih)}${labFiltre!=='hepsi'?` <span style="margin-left:auto;font-size:11px;color:var(--txt2);font-weight:500">${labFiltre==='dikkat'?'Sadece dikkat':'Sadece normal'} · ${gosterilen.length}</span>`:''}</div>
       <div class="lab-list">
-        ${deg.map(d=>{
+        ${gosterilen.length ? gosterilen.map(d=>{
           const ad=d.ad||'', val=d.deger||'', ref=d.referans||'', dur=d.durum||'ok', onceki=d.onceki||'';
           const durEt = dur==='lo'?'Düşük':dur==='hi'?'Yüksek':'Normal';
           return `<div class="lab-row">
@@ -818,7 +825,7 @@ function viewLab(){
               ${onceki?`<span class="lab-row-onceki">Önceki: ${onceki}</span>`:''}
             </div>
           </div>`;
-        }).join('')}
+        }).join('') : `<div class="empty" style="padding:24px">${labFiltre==='dikkat'?'Dikkat gerektiren değer yok 🎉':'Bu filtrede değer yok.'}</div>`}
       </div>
     </div>
   </div>`;
@@ -826,7 +833,15 @@ function viewLab(){
 
 function bindLab(){
   const sel = document.getElementById('labSelect');
-  if(sel) sel.onchange = ()=>{ seciliTahlilId = sel.value; render(); };
+  if(sel) sel.onchange = ()=>{ seciliTahlilId = sel.value; labFiltre='hepsi'; render(); };
+  document.querySelectorAll('.lab-filt').forEach(el=>{
+    el.onclick = ()=>{
+      const f = el.dataset.filt;
+      // Aynı filtreye tekrar basınca hepsine dön
+      labFiltre = (labFiltre===f) ? 'hepsi' : f;
+      render();
+    };
+  });
 }
 
 // ===== KOÇ CHAT =====
