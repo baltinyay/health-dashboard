@@ -41,6 +41,10 @@ exports.handler = async function (event) {
     const silme = silmeKomutu(mesaj);
     if (silme) return await silmeYap(ctx, silme, mesaj);
 
+    // ---- KALORİ HEDEFİ GÜNCELLEME Mİ? ----
+    const hedef = hedefKomutu(mesaj, tarih);
+    if (hedef) return await hedefGuncelle(ctx, hedef);
+
     // ---- MARKDOWN RAPOR MU? (Gemini/Claude çıktısı, TOPLAM satırlı) ----
     const rapor = raporParse(mesaj);
     if (rapor) return await ogunKaydetDirekt(ctx, rapor);
@@ -329,6 +333,54 @@ async function egzersizAdlariniDuzelt(egzersizler) {
   if (!Array.isArray(duzeltilmis) || duzeltilmis.length !== egzersizler.length) return egzersizler;
 
   return egzersizler.map((e, i) => ({ ad: duzeltilmis[i] || e.ad, detay: e.detay }));
+}
+
+// ================= KALORİ HEDEFİ =================
+// "almam gereken kaloriyi 2000'e çıkar", "kalorimi 1900'e düşür",
+// "hedefi 2200 yap", "1 temmuzdan itibaren 2000" gibi cümleleri anlar.
+
+function hedefKomutu(mesaj, varsayilanTarih) {
+  const t = temizle(mesaj);
+  // Yemek bildirimi ise (yedim/içtim) kesinlikle hedef değil
+  if (/yedim|ictim|tukettim|atistirdim/.test(t)) return null;
+  // "kalori" veya "hedef" + bir sayı + değiştirme fiili geçmeli
+  if (!/kalori|kcal|hedef/.test(t)) return null;
+  if (!/cikar|cikart|dusur|yap|guncelle|ayarla|olsun|ol\b|yukselt|indir|degistir|ayarl/.test(t)) return null;
+
+  const sayilar = (mesaj.match(/\d{3,4}/g) || []).map(Number).filter((n) => n >= 800 && n <= 5000);
+  if (!sayilar.length) return null;
+  const kalori = sayilar[0];
+  const baslangic = tarihBul(mesaj, varsayilanTarih) || varsayilanTarih;
+  return { kalori, baslangic };
+}
+
+function tarihBul(mesaj, refTarih) {
+  const t = temizle(mesaj);
+  const aylar = { ocak:1, subat:2, mart:3, nisan:4, mayis:5, haziran:6, temmuz:7, agustos:8, eylul:9, ekim:10, kasim:11, aralik:12 };
+  const m = t.match(/(\d{1,2})\s*(ocak|subat|mart|nisan|mayis|haziran|temmuz|agustos|eylul|ekim|kasim|aralik)/);
+  if (m) {
+    const gun = String(m[1]).padStart(2, "0");
+    const ay = String(aylar[m[2]]).padStart(2, "0");
+    const yil = new Date().getFullYear();
+    return `${yil}-${ay}-${gun}`;
+  }
+  const baz = refTarih ? new Date(refTarih) : new Date();
+  if (/yarin/.test(t)) { baz.setDate(baz.getDate() + 1); return baz.toISOString().slice(0, 10); }
+  if (/bugun/.test(t)) return refTarih || new Date().toISOString().slice(0, 10);
+  return null;
+}
+
+async function hedefGuncelle(ctx, hedef) {
+  const r = await sbInsert(ctx, "hedefler", {
+    baslangic_tarih: hedef.baslangic,
+    kalori: hedef.kalori,
+  });
+  if (r.ok)
+    return json({
+      cevap: `🎯 Kalori hedefin güncellendi: ${hedef.kalori} kcal\n📅 ${hedef.baslangic} tarihinden itibaren geçerli.`,
+      saved: true,
+    });
+  return json({ cevap: "⚠️ Hedef güncellenemedi: " + r.error });
 }
 
 // ================= SİLME =================
