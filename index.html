@@ -828,16 +828,17 @@ function scrollChat(){ const m=document.getElementById('chatMsgs'); if(m) m.scro
 let bekleyenOnay = null; // görsel okuması sonrası onay bekleyen veri
 
 async function fotoGonder(file){
-  // Tartı mı tahlil mi? Basit sor.
-  const tip = confirm('Bu bir TAHLİL mi? (İptal = Tartı)') ? 'tahlil' : 'tarti';
+  const tip = await fotoTipSec();
+  if(!tip){ document.getElementById('fotoInput').value=''; return; }
 
-  // base64'e çevir
-  const base64 = await new Promise((res,rej)=>{
-    const r = new FileReader();
-    r.onload = ()=>res(r.result);
-    r.onerror = rej;
-    r.readAsDataURL(file);
-  });
+  // Görseli küçült (büyük mobil fotoğraflar "load failed"e yol açıyor)
+  let base64;
+  try{
+    base64 = await kucultGorsel(file, 1280, 0.8);
+  }catch(e){
+    // küçültme başarısızsa orijinali kullan
+    base64 = await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); });
+  }
 
   chatGecmis.push({rol:'kullanici', metin:`📷 ${tip==='tahlil'?'Tahlil':'Tartı'} fotoğrafı yüklendi`});
   const msgs = document.getElementById('chatMsgs');
@@ -851,15 +852,58 @@ async function fotoGonder(file){
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ gorsel: base64, gorsel_tip: tip, tarih: selDate }),
     });
+    if(!res.ok) throw new Error('Sunucu '+res.status);
     const data = await res.json();
     chatGecmis.push({rol:'koc', metin:data.cevap||'Görsel okunamadı.'});
     if(data.bekleyen) bekleyenOnay = data.bekleyen;
   }catch(e){
-    chatGecmis.push({rol:'koc', metin:'Bağlantı hatası: '+e.message});
+    chatGecmis.push({rol:'koc', metin:'Bağlantı hatası: '+e.message+'\n\nFotoğraf çok büyük olabilir, daha küçük/net bir görsel dene.'});
   }
   document.getElementById('fotoInput').value='';
   document.getElementById('chatMsgs').innerHTML = chatGecmis.map(m=>`<div class="msg ${m.rol==='kullanici'?'user':'koc'}">${escapeHtml(m.metin)}</div>`).join('');
   scrollChat();
+}
+
+// Görseli orantılı küçült, base64 (jpeg) döndür
+function kucultGorsel(file, maxBoyut, kalite){
+  return new Promise((resolve,reject)=>{
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = ()=>{
+      URL.revokeObjectURL(url);
+      let {width:w, height:h} = img;
+      if(w>maxBoyut || h>maxBoyut){
+        if(w>h){ h=Math.round(h*maxBoyut/w); w=maxBoyut; }
+        else { w=Math.round(w*maxBoyut/h); h=maxBoyut; }
+      }
+      const c = document.createElement('canvas');
+      c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      resolve(c.toDataURL('image/jpeg', kalite));
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+// Net tip seçimi için küçük popup
+function fotoTipSec(){
+  return new Promise(resolve=>{
+    const ov = document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;display:flex;align-items:center;justify-content:center;padding:24px';
+    ov.innerHTML=`<div style="background:var(--card2);border:1px solid var(--line2);border-radius:18px;padding:22px;max-width:300px;width:100%">
+      <div style="font-size:15px;font-weight:700;margin-bottom:6px;color:var(--txt)">Ne yüklüyorsun?</div>
+      <div style="font-size:12px;color:var(--txt2);margin-bottom:16px">Fotoğraftaki veri türünü seç</div>
+      <button id="ftTarti" style="width:100%;background:var(--green);color:#04120C;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px">⚖️ Tartı / Vücut Analizi</button>
+      <button id="ftTahlil" style="width:100%;background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px">🩸 Kan Tahlili</button>
+      <button id="ftIptal" style="width:100%;background:transparent;color:var(--txt2);border:none;border-radius:12px;padding:10px;font-size:13px;cursor:pointer">İptal</button>
+    </div>`;
+    document.body.appendChild(ov);
+    ov.querySelector('#ftTarti').onclick=()=>{ov.remove();resolve('tarti');};
+    ov.querySelector('#ftTahlil').onclick=()=>{ov.remove();resolve('tahlil');};
+    ov.querySelector('#ftIptal').onclick=()=>{ov.remove();resolve(null);};
+    ov.onclick=(e)=>{ if(e.target===ov){ov.remove();resolve(null);} };
+  });
 }
 
 async function gonder(){
