@@ -71,57 +71,104 @@ exports.handler = async function (event) {
 
 function raporParse(mesaj) {
   const t = temizle(mesaj);
-  // "toplam" kelimesi + en az bir kcal geçmeli ki rapor sayalım
-  if (!/toplam/.test(t)) return null;
 
-  // TOPLAM satırını bul (markdown tablo satırı veya düz satır)
-  const satirlar = mesaj.split("\n");
-  let toplamSatir = satirlar.find((s) => /toplam/i.test(temizle(s)) && /\d/.test(s));
-  if (!toplamSatir) return null;
+  // Esnek okuma: değerleri nerede/nasıl yazılırsa yazılsın yakala.
+  // "800 kcal", "kalori: 800", "800 kalori" → hepsi çalışır.
+  const kcal = ilkSayi(mesaj, [
+    /(\d{3,5})\s*kcal/i,
+    /(\d{3,5})\s*kalori/i,
+    /kalori\s*[:=]\s*(\d{3,5})/i,
+    /toplam\s*[:=]?\s*(\d{3,5})/i,
+  ]);
 
-  // Satırdaki tüm sayıları sırayla al: [kcal, protein, karb, yag] beklenir
-  const sayilar = (toplamSatir.match(/\d+(?:[.,]\d+)?/g) || []).map((x) =>
-    Math.round(Number(x.replace(",", ".")))
-  );
-  if (!sayilar.length) return null;
+  const protein = ilkSayi(mesaj, [
+    /protein\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i,
+    /(\d+(?:[.,]\d+)?)\s*(?:g)?\s*protein/i,
+    /\bp\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i,
+  ]);
 
-  // En büyük sayı kcal'dir (genelde), kalanlar makro.
-  // Markdown tabloda sıra: kcal | protein | karb | yag
-  let kcal = 0, protein = 0, karb = 0, yag = 0;
-  const kcalMatch = toplamSatir.match(/(\d+)\s*kcal/i);
-  if (kcalMatch) {
-    kcal = Number(kcalMatch[1]);
-    // kcal'den sonra gelen ilk 3 sayı: protein, karb, yag
-    const sonra = toplamSatir.slice(toplamSatir.indexOf(kcalMatch[0]) + kcalMatch[0].length);
-    const s2 = (sonra.match(/\d+(?:[.,]\d+)?/g) || []).map((x) => Math.round(Number(x.replace(",", "."))));
-    [protein, karb, yag] = [s2[0] || 0, s2[1] || 0, s2[2] || 0];
-  } else {
-    // kcal etiketi yoksa: ilk sayı kcal, sonraki üçü makro
-    [kcal, protein, karb, yag] = [sayilar[0] || 0, sayilar[1] || 0, sayilar[2] || 0, sayilar[3] || 0];
+  const karb = ilkSayi(mesaj, [
+    /karbonhidrat\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i,
+    /(\d+(?:[.,]\d+)?)\s*(?:g)?\s*karbonhidrat/i,
+    /\bkarb\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i,
+    /\bk\s*[:=]\s*(\d+(?:[.,]\d+)?)/i,
+  ]);
+
+  const yag = ilkSayi(mesaj, [
+    /ya[ğg]\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i,
+    /(\d+(?:[.,]\d+)?)\s*(?:g)?\s*ya[ğg]/i,
+    /\by\s*[:=]\s*(\d+(?:[.,]\d+)?)/i,
+  ]);
+
+  // En az kalori VEYA bir makro bulunduysa öğün say.
+  if (kcal == null && protein == null && karb == null && yag == null) return null;
+
+  // Markdown TOPLAM satırı varsa ondan üzerine yaz (daha güvenilir)
+  const toplamSatir = mesaj.split("\n").find((s) => /toplam/i.test(temizle(s)) && /\d/.test(s));
+  let fKcal = kcal, fPro = protein, fKarb = karb, fYag = yag;
+  if (toplamSatir) {
+    const km = toplamSatir.match(/(\d+)\s*kcal/i);
+    if (km) {
+      fKcal = Number(km[1]);
+      const sonra = toplamSatir.slice(toplamSatir.indexOf(km[0]) + km[0].length);
+      const s2 = (sonra.match(/\d+(?:[.,]\d+)?/g) || []).map((x) => Math.round(Number(x.replace(",", "."))));
+      if (s2[0] != null) fPro = s2[0];
+      if (s2[1] != null) fKarb = s2[1];
+      if (s2[2] != null) fYag = s2[2];
+    }
   }
 
-  if (kcal <= 0) return null;
+  return {
+    ogun: ogunTespit(t),
+    yiyecekler: baslikYiyecek(mesaj) || "Çeşitli besinler",
+    kcal: fKcal || 0,
+    protein: fPro || 0,
+    karb: fKarb || 0,
+    yag: fYag || 0,
+  };
+}
 
-  // Öğün adı: başlıkta "kahvaltı/öğlen/akşam" geçiyor mu?
-  let ogun = "Öğün";
-  if (/kahvalti/.test(t)) ogun = "Kahvaltı";
-  else if (/oglen|ogle/.test(t)) ogun = "Öğlen";
-  else if (/aksam/.test(t)) ogun = "Akşam";
-  else if (/ara ?ogun/.test(t)) ogun = "Ara Öğün";
+// Verilen kalıplardan ilk eşleşeni döndürür (sayı veya null)
+function ilkSayi(mesaj, kaliplar) {
+  for (const re of kaliplar) {
+    const m = mesaj.match(re);
+    if (m) return Math.round(Number(m[1].replace(",", ".")));
+  }
+  return null;
+}
 
-  // Yiyecekler: tablodaki **kalın** isimleri topla
-  const isimler = [...mesaj.matchAll(/\*\*(.+?)\*\*/g)]
+function ogunTespit(t) {
+  if (/kahvalti/.test(t)) return "Kahvaltı";
+  if (/oglen|ogle/.test(t)) return "Öğlen";
+  if (/aksam/.test(t)) return "Akşam";
+  if (/ara ?ogun/.test(t)) return "Ara Öğün";
+  return "Öğün";
+}
+
+function baslikYiyecek(mesaj) {
+  // 1) Markdown **kalın** isimler
+  const kalin = [...mesaj.matchAll(/\*\*(.+?)\*\*/g)]
     .map((m) => m[1].trim())
     .filter((x) =>
-      !/toplam/i.test(x) &&            // TOPLAM satırı değil
-      !/\d+\s*kcal/i.test(x) &&        // kalori değeri değil
-      !/^[\d.,\s]+$/.test(x) &&        // sadece sayı değil (30, 102, 59)
-      !/degerlendirme|durum|analiz|gunluk/i.test(temizle(x)) && // başlık değil
+      !/toplam/i.test(x) && !/\d+\s*kcal/i.test(x) &&
+      !/^[\d.,\s]+$/.test(x) &&
+      !/degerlendirme|durum|analiz|gunluk|protein|karbonhidrat|ya[ğg]|kalori/i.test(temizle(x)) &&
       x.length < 50
     );
-  const yiyecekler = isimler.length ? isimler.join(", ") : "Çeşitli besinler";
+  if (kalin.length) return kalin.join(", ");
 
-  return { ogun, yiyecekler, kcal, protein, karb, yag };
+  // 2) İlk satır (genelde besin adı): "1,5 Adana Dürüm ve 1 Kola..." 
+  const ilkSatir = mesaj.split("\n")[0].trim();
+  // başlık temizle: "Tahmini Besin Değerleri" gibi kuyrukları at
+  const temiz = ilkSatir
+    .replace(/tahmini.*$/i, "")
+    .replace(/besin de[ğg]er.*$/i, "")
+    .replace(/makro.*$/i, "")
+    .replace(/[#*]/g, "")
+    .trim();
+  if (temiz && temiz.length < 80 && !/^kalori|^protein|^toplam/i.test(temizle(temiz))) return temiz;
+
+  return null;
 }
 
 async function ogunKaydetDirekt(ctx, r) {
