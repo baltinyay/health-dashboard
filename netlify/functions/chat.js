@@ -43,6 +43,11 @@ exports.handler = async function (event) {
       return await gorselOku(gorsel, gorselTip, tarih);
     }
 
+    // ---- PDF METNİ GELDİYSE (tahlil): Gemini ayrıştırsın, onaya sun ----
+    if (body.pdf_metin) {
+      return await tahlilMetniOku(String(body.pdf_metin), tarih);
+    }
+
     if (!mesaj) return json({ cevap: "Mesaj boş." });
 
     // ---- ONAY MI? (görsel okuması sonrası "evet/onayla/kaydet") ----
@@ -345,6 +350,80 @@ async function egzersizAdlariniDuzelt(egzersizler) {
   if (!Array.isArray(duzeltilmis) || duzeltilmis.length !== egzersizler.length) return egzersizler;
 
   return egzersizler.map((e, i) => ({ ad: duzeltilmis[i] || e.ad, detay: e.detay }));
+}
+
+// ================= TAHLİL PDF METNİ AYRIŞTIRMA =================
+
+async function tahlilMetniOku(metin, tarih) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return json({ cevap: "Tahlil okuma için GEMINI_API_KEY gerekli." });
+  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+
+  // Metni makul boyuta kırp (çok uzunsa Gemini'yi zorlamasın)
+  const kisaMetin = metin.slice(0, 28000);
+
+  const prompt = `Bu bir laboratuvar kan tahlili raporunun metni. İçindeki TÜM test parametrelerini ayrıştır. Yorum yapma, sadece veriyi çıkar.
+
+Her parametre için şu alanları bul:
+- ad: tetkik adı (örn "Vitamin B12", "TSH", "Demir")
+- deger: güncel sonuç (sayı, birimiyle örn "547 pg/mL")
+- referans: referans aralığı (örn "187 - 914")
+- onceki: önceki sonuç varsa (örn "697 pg/mL"), yoksa boş
+- durum: değer referans aralığının ALTINDAysa "lo", ÜSTÜNDEyse "hi", İÇİNDEyse "ok". Belirsizse "ok".
+
+"Çalışılıyor" yazan veya sonucu olmayan parametreleri ATLA.
+
+SADECE şu JSON formatında dön, başka hiçbir şey yazma:
+{"baslik":"Kan Tahlili","tarih_metinde":"varsa rapor tarihi","degerler":[{"ad":"...","deger":"...","referans":"...","onceki":"...","durum":"ok"}]}
+
+Tahlil metni:
+${kisaMetin}`;
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 8000, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 } },
+        }),
+      }
+    );
+    const data = await res.json();
+    if (!res.ok) {
+      const msg = data?.error?.message || JSON.stringify(data).slice(0, 200);
+      return json({ cevap: "Tahlil okunamadı: " + msg });
+    }
+    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    let okunan;
+    try {
+      let t = raw.trim().replace(/^```json/i, "").replace(/^```/, "").replace(/```$/, "").trim();
+      okunan = JSON.parse(t);
+    } catch {
+      return json({ cevap: "Tahlil ayrıştırılamadı. PDF çok büyük olabilir, tekrar dener misin?" });
+    }
+
+    const deg = okunan.degerler || [];
+    if (!deg.length) return json({ cevap: "Tahlilde değer bulunamadı." });
+
+    // Anormal olanları özetle (hepsini değil, çok uzun olmasın)
+    const anormal = deg.filter((d) => d.durum === "lo" || d.durum === "hi");
+    let ozet = `📋 Tahlilden ${deg.length} parametre okudum (${tarih}).\n\n`;
+    if (anormal.length) {
+      ozet += `⚠️ Aralık dışı ${anormal.length} değer:\n`;
+      ozet += anormal.slice(0, 15).map((d) => `• ${d.ad}: ${d.deger} (${d.durum === "lo" ? "düşük" : "yüksek"})`).join("\n");
+      if (anormal.length > 15) ozet += `\n… ve ${anormal.length - 15} tane daha`;
+    } else {
+      ozet += "✅ Tüm değerler referans aralığında görünüyor.";
+    }
+    ozet += `\n\n✅ Kaydetmek için "evet" yaz, iptal için "hayır".`;
+
+    return json({ cevap: ozet, bekleyen: { tip: "tahlil", tarih, veri: okunan } });
+  } catch (e) {
+    return json({ cevap: "Tahlil işlenirken hata: " + e.message });
+  }
 }
 
 // ================= GÖRSEL OKUMA (TARTI / TAHLİL) =================
