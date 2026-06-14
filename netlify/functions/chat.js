@@ -29,13 +29,25 @@ exports.handler = async function (event) {
     const body = JSON.parse(event.body || "{}");
     const mesaj = String(body.mesaj || "").trim();
     const tarih = String(body.tarih || "").trim() || bugun();
-    if (!mesaj) return json({ cevap: "Mesaj boş." });
+    const gorsel = body.gorsel || null; // base64 görsel (tartı/tahlil)
+    const gorselTip = body.gorsel_tip || "tarti"; // "tarti" | "tahlil"
 
     const SB_URL = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
     const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
     if (!SB_URL || !KEY) return json({ cevap: "Supabase ortam değişkenleri eksik." });
 
     const ctx = { SB_URL, KEY, tarih };
+
+    // ---- GÖRSEL GELDİYSE: Gemini ile oku, onaya sun (kaydetme) ----
+    if (gorsel) {
+      return await gorselOku(gorsel, gorselTip, tarih);
+    }
+
+    if (!mesaj) return json({ cevap: "Mesaj boş." });
+
+    // ---- ONAY MI? (görsel okuması sonrası "evet/onayla/kaydet") ----
+    const onay = onayKomutu(mesaj, body.bekleyen);
+    if (onay) return await onayliKaydet(ctx, onay);
 
     // ---- SİLME KOMUTU MU? ----
     const silme = silmeKomutu(mesaj);
@@ -335,6 +347,111 @@ async function egzersizAdlariniDuzelt(egzersizler) {
   return egzersizler.map((e, i) => ({ ad: duzeltilmis[i] || e.ad, detay: e.detay }));
 }
 
+// ================= GÖRSEL OKUMA (TARTI / TAHLİL) =================
+
+async function gorselOku(gorselBase64, tip, tarih) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return json({ cevap: "Görsel okuma için GEMINI_API_KEY gerekli." });
+  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+
+  // base64'ten data prefix'i ayıkla
+  let veri = gorselBase64;
+  let mime = "image/jpeg";
+  const m = gorselBase64.match(/^data:(image\/\w+);base64,(.+)$/);
+  if (m) { mime = m[1]; veri = m[2]; }
+
+  const prompt = tip === "tahlil"
+    ? `Bu bir kan tahlili sonuç görseli. İçindeki TÜM test parametrelerini oku. Yorum yapma, sadece oku. Her parametre için: ad, değer (sayı+birim), referans aralığı, ve durum (deger referansın altındaysa "lo", üstündeyse "hi", aralıktaysa "ok"). Sadece şu JSON: {"tip":"tahlil","baslik":"Tahlil türü varsa","degerler":[{"ad":"Hemoglobin","deger":"14.2 g/dL","referans":"13-17","durum":"ok"}]}`
+    : `Bu bir akıllı tartı / vücut analizi ekranı görseli (Zepp/Mi Fit gibi). Şu değerleri oku, yorum yapma sadece oku: ağırlık (kg), vücut yağ oranı (%), kas kütlesi (kg), su oranı (%), kemik kütlesi (kg), bazal metabolizma, visseral yağ, vücut yağ. Bulamadığın alanı yazma. Sadece şu JSON: {"tip":"tarti","kilo":0,"yag_orani":0,"kas_kg":0,"su_orani":0,"kemik_kg":0,"metabolik":0,"viseral":0}`;
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: veri } }] }],
+          generationConfig: { maxOutputTokens: 1500, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 } },
+        }),
+      }
+    );
+    const data = await res.json();
+    if (!res.ok) {
+      const msg = data?.error?.message || JSON.stringify(data).slice(0, 200);
+      return json({ cevap: "Görsel okunamadı: " + msg });
+    }
+    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    let okunan;
+    try {
+      let t = raw.trim().replace(/^```json/i, "").replace(/^```/, "").replace(/```$/, "").trim();
+      okunan = JSON.parse(t);
+    } catch {
+      return json({ cevap: "Görseldeki değerler okunamadı, tekrar dener misin veya değerleri yazar mısın?" });
+    }
+
+    // Onay metni hazırla
+    if (tip === "tahlil") {
+      const deg = okunan.degerler || [];
+      if (!deg.length) return json({ cevap: "Tahlilde değer okunamadı. Daha net bir görsel dener misin?" });
+      const ozet = deg.map(d => `• ${d.ad}: ${d.deger} (${d.durum === "lo" ? "düşük" : d.durum === "hi" ? "yüksek" : "normal"})`).join("\n");
+      return json({
+        cevap: `📋 Tahlilden şunları okudum (${tarih}):\n\n${ozet}\n\n✅ Doğruysa "onayla" yaz, kaydedeyim.`,
+        bekleyen: { tip: "tahlil", tarih, veri: okunan },
+      });
+    } else {
+      const satir = [];
+      if (okunan.kilo) satir.push(`Kilo: ${okunan.kilo} kg`);
+      if (okunan.yag_orani) satir.push(`Yağ: %${okunan.yag_orani}`);
+      if (okunan.kas_kg) satir.push(`Kas: ${okunan.kas_kg} kg`);
+      if (okunan.su_orani) satir.push(`Su: %${okunan.su_orani}`);
+      if (!satir.length) return json({ cevap: "Tartı değerleri okunamadı. Daha net bir görsel dener misin?" });
+      return json({
+        cevap: `⚖️ Tartıdan şunları okudum (${tarih}):\n\n${satir.join("\n")}\n\n✅ Doğruysa "onayla" yaz, kaydedeyim.`,
+        bekleyen: { tip: "tarti", tarih, veri: okunan },
+      });
+    }
+  } catch (e) {
+    return json({ cevap: "Görsel işlenirken hata: " + e.message });
+  }
+}
+
+function onayKomutu(mesaj, bekleyen) {
+  if (!bekleyen) return null;
+  const t = temizle(mesaj);
+  if (/onayla|onaylad|evet|dogru|kaydet|tamam|olur|kabul/.test(t)) return bekleyen;
+  return null;
+}
+
+async function onayliKaydet(ctx, bekleyen) {
+  const tarih = bekleyen.tarih || ctx.tarih;
+  if (bekleyen.tip === "tarti") {
+    const v = bekleyen.veri;
+    const payload = { tarih };
+    if (v.kilo) payload.kilo = num(v.kilo, true);
+    if (v.yag_orani) payload.yag_orani = num(v.yag_orani, true);
+    if (v.kas_kg) payload.kas_kg = num(v.kas_kg, true);
+    if (v.su_orani) payload.su_orani = num(v.su_orani, true);
+    if (v.kemik_kg) payload.kemik_kg = num(v.kemik_kg, true);
+    if (v.metabolik) payload.metabolik_yas = num(v.metabolik);
+    if (v.viseral) payload.viseral = num(v.viseral);
+    const r = await sbUpsert({ ...ctx, tarih }, "gunluk_olcum", payload, "tarih");
+    if (r.ok) return json({ cevap: `✅ Tartı kaydedildi (${tarih}): ${v.kilo} kg`, saved: true });
+    return json({ cevap: "⚠️ Kayıt yapılamadı: " + r.error });
+  }
+  if (bekleyen.tip === "tahlil") {
+    const v = bekleyen.veri;
+    const r = await sbInsert({ ...ctx, tarih }, "tahliller", {
+      tarih,
+      baslik: v.baslik || "Kan Tahlili",
+      degerler: v.degerler || [],
+    });
+    if (r.ok) return json({ cevap: `✅ Tahlil kaydedildi (${tarih}): ${(v.degerler || []).length} parametre`, saved: true });
+    return json({ cevap: "⚠️ Kayıt yapılamadı: " + r.error });
+  }
+  return json({ cevap: "Onaylanacak bir şey yok." });
+}
+
 // ================= KALORİ HEDEFİ =================
 // "almam gereken kaloriyi 2000'e çıkar", "kalorimi 1900'e düşür",
 // "hedefi 2200 yap", "1 temmuzdan itibaren 2000" gibi cümleleri anlar.
@@ -490,6 +607,7 @@ function json(p) {
   return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) };
 }
 function bugun() { return new Date().toISOString().slice(0, 10); }
+function num(v, float) { const n = Number(String(v).replace(",", ".")) || 0; return float ? Math.round(n * 10) / 10 : Math.round(n); }
 function sayiBul(s, re) { const m = String(s).match(re); return m ? Math.round(Number(m[1])) : null; }
 function floatBul(s, re) { const m = String(s).match(re); return m ? Math.round(Number(String(m[1]).replace(",", ".")) * 10) / 10 : null; }
 function temizle(s) {
