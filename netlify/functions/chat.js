@@ -396,7 +396,7 @@ async function gorselOku(gorselBase64, tip, tarih) {
       if (!deg.length) return json({ cevap: "Tahlilde değer okunamadı. Daha net bir görsel dener misin?" });
       const ozet = deg.map(d => `• ${d.ad}: ${d.deger} (${d.durum === "lo" ? "düşük" : d.durum === "hi" ? "yüksek" : "normal"})`).join("\n");
       return json({
-        cevap: `📋 Tahlilden şunları okudum (${tarih}):\n\n${ozet}\n\n✅ Doğruysa "onayla" yaz, kaydedeyim.`,
+        cevap: `📋 Tahlilden şunları okudum (${tarih}):\n\n${ozet}\n\n✅ Doğruysa "evet" yaz, kaydedeyim. Yanlışsa "hayır" yaz.`,
         bekleyen: { tip: "tahlil", tarih, veri: okunan },
       });
     } else {
@@ -407,7 +407,7 @@ async function gorselOku(gorselBase64, tip, tarih) {
       if (okunan.su_orani) satir.push(`Su: %${okunan.su_orani}`);
       if (!satir.length) return json({ cevap: "Tartı değerleri okunamadı. Daha net bir görsel dener misin?" });
       return json({
-        cevap: `⚖️ Tartıdan şunları okudum (${tarih}):\n\n${satir.join("\n")}\n\n✅ Doğruysa "onayla" yaz, kaydedeyim.`,
+        cevap: `⚖️ Tartıdan şunları okudum (${tarih}):\n\n${satir.join("\n")}\n\n✅ Doğruysa "evet" yaz, kaydedeyim. Yanlışsa "hayır" yaz.`,
         bekleyen: { tip: "tarti", tarih, veri: okunan },
       });
     }
@@ -419,11 +419,13 @@ async function gorselOku(gorselBase64, tip, tarih) {
 function onayKomutu(mesaj, bekleyen) {
   if (!bekleyen) return null;
   const t = temizle(mesaj);
-  if (/onayla|onaylad|evet|dogru|kaydet|tamam|olur|kabul/.test(t)) return bekleyen;
+  if (/hayir|iptal|yanlis|olmaz|vazgec/.test(t)) return { iptal: true };
+  if (/evet|onayla|onaylad|dogru|kaydet|tamam|olur|kabul/.test(t)) return bekleyen;
   return null;
 }
 
 async function onayliKaydet(ctx, bekleyen) {
+  if (bekleyen.iptal) return json({ cevap: "İptal edildi, kaydetmedim. İstersen tekrar fotoğraf yükle." });
   const tarih = bekleyen.tarih || ctx.tarih;
   if (bekleyen.tip === "tarti") {
     const v = bekleyen.veri;
