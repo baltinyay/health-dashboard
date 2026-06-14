@@ -7,6 +7,7 @@
 <title>Koç · Sağlık Paneli</title>
 <link rel="manifest" href="data:application/json,{%22name%22:%22Ko%C3%A7%22,%22short_name%22:%22Ko%C3%A7%22,%22display%22:%22standalone%22,%22background_color%22:%22%230B0E11%22,%22theme_color%22:%22%230B0E11%22,%22icons%22:[]}">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
   --bg:#0B0E11; --bg2:#13181D; --card:#161C22; --card2:#1C242B;
@@ -231,6 +232,25 @@ body{
 .kb-budget-item{flex:1;text-align:center;background:var(--bg);border:1px solid var(--line);border-radius:11px;padding:11px 6px}
 .kb-budget-v{font-size:20px;font-weight:800;letter-spacing:-.5px}
 .kb-budget-l{font-size:10px;color:var(--txt2);margin-top:3px}
+
+/* TAHLİL SEKMESİ */
+.lab-select{width:100%;background:var(--card);border:1px solid var(--line2);border-radius:13px;padding:13px 14px;color:var(--txt);font-size:14px;font-weight:600;font-family:inherit;margin-bottom:14px;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' fill='none' stroke='%238B97A3' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center}
+.lab-select:focus{border-color:var(--green);outline:none}
+.lab-list{display:flex;flex-direction:column}
+.lab-row{padding:12px 0;border-bottom:1px solid var(--line)}
+.lab-row:last-child{border:none}
+.lab-row-main{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.lab-row-ad{font-size:13.5px;font-weight:600;flex:1;min-width:0}
+.lab-row-val{font-size:14px;font-weight:700;text-align:right;white-space:nowrap}
+.lab-row-val.lo{color:var(--amber)}
+.lab-row-val.hi{color:var(--red)}
+.lab-row-val.ok{color:var(--txt)}
+.lab-row-dur{font-size:10px;font-weight:600;padding:2px 7px;border-radius:6px;margin-left:5px}
+.lab-row-dur.lo{background:rgba(245,181,68,.15);color:var(--amber)}
+.lab-row-dur.hi{background:rgba(255,92,92,.15);color:var(--red)}
+.lab-row-dur.ok{background:var(--green-bg);color:var(--green)}
+.lab-row-sub{display:flex;gap:14px;margin-top:5px;font-size:11px;color:var(--txt3)}
+.lab-row-onceki{color:var(--txt2)}
 </style>
 </head>
 <body>
@@ -438,7 +458,7 @@ function render(){
   else if(curTab==='besl') p.innerHTML = viewBesl();
   else if(curTab==='ant'){ p.innerHTML = viewAnt(); bindAnt(); }
   else if(curTab==='supp'){ p.innerHTML = viewSupp(); bindSupp(); }
-  else if(curTab==='lab') p.innerHTML = viewLab();
+  else if(curTab==='lab'){ p.innerHTML = viewLab(); bindLab(); }
   if(curTab==='ozet' && cache.kiloTrend.length) setTimeout(drawKilo,50);
 }
 
@@ -754,22 +774,59 @@ function bindSupp(){
   });
 }
 
+let seciliTahlilId = null; // seçili tahlil (yoksa en son)
+
 function viewLab(){
-  if(!cache.lab.length) return `<div class="page on"><div class="empty">${I.empty}<div>Henüz tahlil kaydı yok.</div></div></div>`;
-  const t = cache.lab[0];
+  if(!cache.lab.length) return `<div class="page on"><div class="empty">${I.empty}<div>Henüz tahlil kaydı yok.<br><span style="font-size:12px;opacity:.7">Koç sekmesinden 📷 ile tahlil PDF'i yükle.</span></div></div></div>`;
+
+  // cache.lab zaten tarihe göre azalan sıralı (en yeni başta)
+  // Seçili tahlil: id eşleşen, yoksa en sonuncu (ilk eleman)
+  let t = cache.lab[0];
+  if(seciliTahlilId){
+    const bulunan = cache.lab.find(x=>String(x.id)===String(seciliTahlilId));
+    if(bulunan) t = bulunan;
+  }
   const deg = t.degerler||[];
-  const anormal = deg.filter(d=>(d.durum||d[3])&&(d.durum||d[3])!=='ok').length;
+  const dusuk = deg.filter(d=>(d.durum||'ok')==='lo').length;
+  const yuksek = deg.filter(d=>(d.durum||'ok')==='hi').length;
+  const normal = deg.length - dusuk - yuksek;
+
+  // Tarih seçici (dropdown)
+  const secenekler = cache.lab.map(x=>`<option value="${x.id}" ${String(x.id)===String(t.id)?'selected':''}>${fmtDay(x.tarih)} ${x.tarih.split('-')[0]} · ${(x.degerler||[]).length} değer</option>`).join('');
+
   return `<div class="page on">
+    <select class="lab-select" id="labSelect">${secenekler}</select>
+
     <div class="labsum">
       <div class="stat"><div class="stat-label">Parametre</div><div class="stat-val">${deg.length}</div></div>
-      <div class="stat"><div class="stat-label">Normal</div><div class="stat-val green">${deg.length-anormal}</div></div>
-      <div class="stat"><div class="stat-label">Dikkat</div><div class="stat-val amber">${anormal}</div></div>
+      <div class="stat"><div class="stat-label">Normal</div><div class="stat-val green">${normal}</div></div>
+      <div class="stat"><div class="stat-label">Dikkat</div><div class="stat-val amber">${dusuk+yuksek}</div></div>
     </div>
-    <div class="card"><div class="ctitle">${I.lab} ${t.baslik||'Tahlil'} · ${t.tarih||''}</div>
-      <div class="labgrid">${deg.map(d=>{const ad=d.ad||d[0],val=d.deger||d[1],ref=d.referans||d[2],dur=d.durum||d[3]||'ok';return `<div class="labitem"><div class="labname">${ad}</div><div class="labval ${dur}">${val}</div><div class="labref">ref: ${ref}</div></div>`;}).join('')}</div>
-      ${t.not_metni?`<div class="yorum" style="margin-top:14px">${t.not_metni}</div>`:''}
+
+    <div class="card"><div class="ctitle">${I.lab} ${t.baslik||'Tahlil'} · ${fmtDay(t.tarih)}</div>
+      <div class="lab-list">
+        ${deg.map(d=>{
+          const ad=d.ad||'', val=d.deger||'', ref=d.referans||'', dur=d.durum||'ok', onceki=d.onceki||'';
+          const durEt = dur==='lo'?'Düşük':dur==='hi'?'Yüksek':'Normal';
+          return `<div class="lab-row">
+            <div class="lab-row-main">
+              <div class="lab-row-ad">${ad}</div>
+              <div class="lab-row-val ${dur}">${val} <span class="lab-row-dur ${dur}">${durEt}</span></div>
+            </div>
+            <div class="lab-row-sub">
+              <span>Ref: ${ref||'—'}</span>
+              ${onceki?`<span class="lab-row-onceki">Önceki: ${onceki}</span>`:''}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
     </div>
   </div>`;
+}
+
+function bindLab(){
+  const sel = document.getElementById('labSelect');
+  if(sel) sel.onchange = ()=>{ seciliTahlilId = sel.value; render(); };
 }
 
 // ===== KOÇ CHAT =====
@@ -792,7 +849,7 @@ function viewKocu(){
     </div>
     <div class="chat-input">
       <button class="chat-foto" id="chatFoto" title="Tartı/tahlil fotoğrafı yükle">${I.camera}</button>
-      <input type="file" id="fotoInput" accept="image/*" style="display:none">
+      <input type="file" id="fotoInput" accept="image/*,application/pdf" style="display:none">
       <textarea id="chatInput" rows="1" placeholder="Koçuna yaz…"></textarea>
       <button class="chat-send" id="chatSend">${I.send}</button>
     </div>
@@ -813,12 +870,20 @@ function bindChat(){
     c.onclick = ()=>{ input.value=c.dataset.chip; gonder(); };
   });
 
-  // Foto butonu
+  // Foto/PDF butonu
   const fotoBtn = document.getElementById('chatFoto');
   const fotoInput = document.getElementById('fotoInput');
   if(fotoBtn && fotoInput){
     fotoBtn.onclick = ()=> fotoInput.click();
-    fotoInput.onchange = ()=>{ if(fotoInput.files[0]) fotoGonder(fotoInput.files[0]); };
+    fotoInput.onchange = ()=>{
+      const f = fotoInput.files[0];
+      if(!f) return;
+      if(f.type === 'application/pdf' || /\.pdf$/i.test(f.name)){
+        pdfGonder(f); // tahlil PDF'i
+      } else {
+        fotoGonder(f); // tartı/tahlil görseli
+      }
+    };
   }
   scrollChat();
 }
@@ -826,6 +891,58 @@ function bindChat(){
 function scrollChat(){ const m=document.getElementById('chatMsgs'); if(m) m.scrollTop=m.scrollHeight; }
 
 let bekleyenOnay = null; // görsel okuması sonrası onay bekleyen veri
+
+// PDF tahlil: metni çıkar, Gemini'ye gönder
+async function pdfGonder(file){
+  chatGecmis.push({rol:'kullanici', metin:`📄 Tahlil PDF'i yüklendi: ${file.name}`});
+  const msgs = document.getElementById('chatMsgs');
+  msgs.innerHTML = chatGecmis.map(m=>`<div class="msg ${m.rol==='kullanici'?'user':'koc'}">${escapeHtml(m.metin)}</div>`).join('')
+    + '<div class="msg typing" id="typing"><span></span><span></span><span></span></div>';
+  scrollChat();
+
+  let metin = '';
+  try{
+    const buf = await file.arrayBuffer();
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const pdf = await pdfjsLib.getDocument({data:buf}).promise;
+    for(let i=1;i<=pdf.numPages;i++){
+      const page = await pdf.getPage(i);
+      const tc = await page.getTextContent();
+      metin += tc.items.map(it=>it.str).join(' ') + '\n';
+    }
+  }catch(e){
+    document.getElementById('fotoInput').value='';
+    chatGecmis.push({rol:'koc', metin:'PDF okunamadı: '+e.message});
+    document.getElementById('chatMsgs').innerHTML = chatGecmis.map(m=>`<div class="msg ${m.rol==='kullanici'?'user':'koc'}">${escapeHtml(m.metin)}</div>`).join('');
+    scrollChat();
+    return;
+  }
+
+  if(!metin.trim()){
+    document.getElementById('fotoInput').value='';
+    chatGecmis.push({rol:'koc', metin:'PDF\'ten metin çıkarılamadı (taranmış görüntü olabilir). Fotoğraf olarak deneyebilirsin.'});
+    document.getElementById('chatMsgs').innerHTML = chatGecmis.map(m=>`<div class="msg ${m.rol==='kullanici'?'user':'koc'}">${escapeHtml(m.metin)}</div>`).join('');
+    scrollChat();
+    return;
+  }
+
+  try{
+    const res = await fetch('/.netlify/functions/chat', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ pdf_metin: metin, tarih: selDate }),
+    });
+    if(!res.ok) throw new Error('Sunucu '+res.status);
+    const data = await res.json();
+    chatGecmis.push({rol:'koc', metin:data.cevap||'Tahlil okunamadı.'});
+    if(data.bekleyen) bekleyenOnay = data.bekleyen;
+  }catch(e){
+    chatGecmis.push({rol:'koc', metin:'Bağlantı hatası: '+e.message});
+  }
+  document.getElementById('fotoInput').value='';
+  document.getElementById('chatMsgs').innerHTML = chatGecmis.map(m=>`<div class="msg ${m.rol==='kullanici'?'user':'koc'}">${escapeHtml(m.metin)}</div>`).join('');
+  scrollChat();
+}
 
 async function fotoGonder(file){
   const tip = await fotoTipSec();
