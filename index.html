@@ -224,6 +224,10 @@ body{
 .kb-durum{margin-top:14px;padding:13px 15px;border-radius:12px;border-left:3px solid}
 .kb-durum-t{font-size:13px;font-weight:700;margin-bottom:4px}
 .kb-durum-m{font-size:12.5px;line-height:1.55;color:var(--txt2)}
+.kb-budget{display:flex;justify-content:space-between;margin-top:14px;gap:10px}
+.kb-budget-item{flex:1;text-align:center;background:var(--bg);border:1px solid var(--line);border-radius:11px;padding:11px 6px}
+.kb-budget-v{font-size:20px;font-weight:800;letter-spacing:-.5px}
+.kb-budget-l{font-size:10px;color:var(--txt2);margin-top:3px}
 </style>
 </head>
 <body>
@@ -321,17 +325,26 @@ let cy = new Date().getFullYear(), cm = new Date().getMonth();
 let calOpen = false;
 let kiloChart = null;
 
-const cache = { olcum:{}, ogun:{}, ant:{}, supp:{}, lab:[], kiloTrend:[], loaded:false };
+const cache = { olcum:{}, ogun:{}, ant:{}, supp:{}, lab:[], kiloTrend:[], hedefler:[], loaded:false };
+
+// Belirli bir güne ait kalori hedefini bul (o güne kadar olan en son hedef)
+function gununHedefi(ds){
+  const uygun = cache.hedefler
+    .filter(h => h.baslangic_tarih <= ds)
+    .sort((a,b)=> b.baslangic_tarih.localeCompare(a.baslangic_tarih));
+  return uygun.length ? uygun[0].kalori : 1800; // varsayılan 1800
+}
 
 async function fetchData(){
-  cache.olcum={}; cache.ogun={}; cache.ant={}; cache.supp={}; cache.lab=[]; cache.kiloTrend=[];
+  cache.olcum={}; cache.ogun={}; cache.ant={}; cache.supp={}; cache.lab=[]; cache.kiloTrend=[]; cache.hedefler=[];
   try{
-    const [olcum, ogun, ant, supp, lab] = await Promise.all([
+    const [olcum, ogun, ant, supp, lab, hedefler] = await Promise.all([
       sb.from('gunluk_olcum').select('*'),
       sb.from('ogunler').select('*'),
       sb.from('antrenmanlar').select('*'),
       sb.from('supplementler').select('*'),
       sb.from('tahliller').select('*'),
+      sb.from('hedefler').select('*'),
     ]);
     (olcum.data||[]).forEach(r=>cache.olcum[r.tarih]=r);
     (ogun.data||[]).forEach(r=>{ (cache.ogun[r.tarih]=cache.ogun[r.tarih]||[]).push(r); });
@@ -339,6 +352,7 @@ async function fetchData(){
     (supp.data||[]).forEach(r=>cache.supp[r.tarih]=r);
     cache.lab = (lab.data||[]).sort((a,b)=>(b.tarih||'').localeCompare(a.tarih||''));
     cache.kiloTrend = (olcum.data||[]).filter(r=>r.kilo).sort((a,b)=>a.tarih.localeCompare(b.tarih));
+    cache.hedefler = hedefler.data || [];
   }catch(e){
     console.error(e);
   }
@@ -439,10 +453,12 @@ function viewOzet(){
   const t = totals(selDate);
   const a = cache.ant[selDate];
   const antVar = a && Array.isArray(a.egzersizler) && a.egzersizler.length;
-  if(!o && t.kalori===0 && !antVar){
-    return `<div class="page on"><div class="empty">${I.empty}<div>Bu gün için veri yok.</div></div></div>`;
-  }
   const trend = cache.kiloTrend;
+  // Son ölçüm: o güne ait varsa o, yoksa trenddeki en son ölçüm
+  const sonOlcum = o || (trend.length ? trend[trend.length-1] : null);
+  const olcumGuncel = !!o; // bu güne mi ait
+  const hedefKcal = gununHedefi(selDate);
+
   let delta = 0;
   if(o && trend.length>1){
     const idx = trend.findIndex(r=>r.tarih===selDate);
@@ -452,19 +468,35 @@ function viewOzet(){
     ['Protein',t.protein,HEDEF.protein,'var(--green)'],
     ['Karb',t.karb,HEDEF.karb,'var(--blue)'],
     ['Yağ',t.yag,HEDEF.yag,'var(--amber)'],
-    ['Kalori',t.kalori,HEDEF.kalori,'var(--coral)'],
+    ['Kalori',t.kalori,hedefKcal,'var(--coral)'],
   ];
+
+  // Kalori bütçesi mini-gösterge
+  const alinan = t.kalori;
+  const kalan = hedefKcal - alinan;
+  const yuzde = Math.round(alinan/hedefKcal*100);
+  let bRenk = 'var(--blue)';
+  if(yuzde>=70 && yuzde<=100) bRenk='var(--green)';
+  else if(yuzde>100 && yuzde<=115) bRenk='var(--amber)';
+  else if(yuzde>115) bRenk='var(--red)';
+
   return `<div class="page on">
-    ${o ? `<div class="hero">
-      <div class="hero-label">Güncel ağırlık</div>
-      <div class="hero-val">${o.kilo}<span class="hero-unit"> kg</span></div>
-      ${delta!==0?`<div class="hero-delta ${delta<0?'down':'up'}">${delta<0?'↓':'↑'} ${Math.abs(delta)} kg · önceki ölçüm</div>`:''}
+    ${sonOlcum ? `<div class="hero">
+      <div class="hero-label">${olcumGuncel?'Ağırlık':'Son ölçüm'} ${olcumGuncel?'':`· ${fmtDay(sonOlcum.tarih)}`}</div>
+      <div class="hero-val">${sonOlcum.kilo}<span class="hero-unit"> kg</span></div>
+      ${olcumGuncel&&delta!==0?`<div class="hero-delta ${delta<0?'down':'up'}">${delta<0?'↓':'↑'} ${Math.abs(delta)} kg · önceki ölçüm</div>`:''}
     </div>`:''}
-    <div class="stats">
-      <div class="stat"><div class="stat-label">Kalori</div><div class="stat-val amber">${t.kalori}</div></div>
-      <div class="stat"><div class="stat-label">Protein</div><div class="stat-val green">${t.protein}<span class="u">g</span></div></div>
-      ${o?`<div class="stat"><div class="stat-label">Yağ oranı</div><div class="stat-val">%${o.yag_orani||'—'}</div></div>`:`<div class="stat"><div class="stat-label">Karb</div><div class="stat-val">${t.karb}<span class="u">g</span></div></div>`}
+
+    <div class="card">
+      <div class="ctitle">${I.chart} Kalori Bütçesi <span style="margin-left:auto;font-size:11px;color:var(--txt2);font-weight:500">${alinan} / ${hedefKcal} kcal</span></div>
+      <div class="kb-track"><div class="kb-fill" style="width:${Math.min(100,yuzde)}%;background:${bRenk}"></div>${yuzde>100?`<div class="kb-over" style="width:${Math.min(100,yuzde-100)}%"></div>`:''}</div>
+      <div class="kb-budget">
+        <div class="kb-budget-item"><div class="kb-budget-v" style="color:${bRenk}">${alinan}</div><div class="kb-budget-l">tükettim</div></div>
+        <div class="kb-budget-item"><div class="kb-budget-v" style="color:${kalan>=0?'var(--green)':'var(--red)'}">${kalan>=0?kalan:'+'+Math.abs(kalan)}</div><div class="kb-budget-l">${kalan>=0?'kalan hakkım':'aşım'}</div></div>
+        <div class="kb-budget-item"><div class="kb-budget-v">%${yuzde}</div><div class="kb-budget-l">doluluk</div></div>
+      </div>
     </div>
+
     <div class="card">
       <div class="ctitle">${I.chart} Makro durumu</div>
       <div class="rings">
@@ -472,7 +504,7 @@ function viewOzet(){
       </div>
     </div>
     ${trend.length>1?`<div class="card"><div class="ctitle">${I.chart} Kilo trendi</div><div class="chart-wrap"><canvas id="kiloChart"></canvas></div></div>`:''}
-    ${o&&o.kas_kg?`<div class="stats"><div class="stat"><div class="stat-label">Kas kütlesi</div><div class="stat-val">${o.kas_kg}<span class="u">kg</span></div></div><div class="stat"><div class="stat-label">Su oranı</div><div class="stat-val">%${o.su_orani||'—'}</div></div><div class="stat"><div class="stat-label">Metabolik yaş</div><div class="stat-val">${o.metabolik_yas||'—'}</div></div></div>`:''}
+    ${sonOlcum&&sonOlcum.kas_kg?`<div class="stats"><div class="stat"><div class="stat-label">Kas kütlesi</div><div class="stat-val">${sonOlcum.kas_kg}<span class="u">kg</span></div></div><div class="stat"><div class="stat-label">Su oranı</div><div class="stat-val">%${sonOlcum.su_orani||'—'}</div></div><div class="stat"><div class="stat-label">Yağ oranı</div><div class="stat-val">%${sonOlcum.yag_orani||'—'}</div></div></div>`:''}
     ${ozetAntrenman()}
     ${ozetOgunler()}
   </div>`;
@@ -529,7 +561,7 @@ function viewBesl(){
   const t = totals(selDate);
   if(!og.length) return `<div class="page on"><div class="empty">${I.empty}<div>Bu gün öğün kaydı yok.</div></div></div>`;
 
-  const hedef = HEDEF.kalori;
+  const hedef = gununHedefi(selDate);
   const alinan = t.kalori;
   const yuzde = Math.round(alinan/hedef*100);
   const kalan = hedef - alinan;
