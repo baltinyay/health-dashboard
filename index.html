@@ -211,6 +211,19 @@ body{
 .asaveb svg{width:18px;height:18px}
 .atip-input{width:100%;background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 14px;color:var(--txt);font-size:14px;font-family:inherit;margin-bottom:12px}
 .atip-input:focus{border-color:var(--green);outline:none}
+
+/* KALORİ BÜTÇE GRAFİĞİ */
+.kb-head{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:14px}
+.kb-big{font-size:34px;font-weight:800;letter-spacing:-1.5px;line-height:1}
+.kb-slash{font-size:16px;color:var(--txt2);font-weight:600;letter-spacing:0}
+.kb-pct{font-size:14px;font-weight:700;padding:5px 12px;border-radius:10px}
+.kb-track{position:relative;height:16px;background:var(--bg);border-radius:10px;overflow:hidden;border:1px solid var(--line)}
+.kb-fill{position:absolute;left:0;top:0;height:100%;border-radius:10px;transition:width .7s cubic-bezier(.2,.8,.2,1)}
+.kb-over{position:absolute;right:0;top:0;height:100%;background:repeating-linear-gradient(45deg,var(--red),var(--red) 6px,#c44 6px,#c44 12px);opacity:.9;border-radius:0 10px 10px 0;transition:width .7s cubic-bezier(.2,.8,.2,1)}
+.kb-scale{display:flex;justify-content:space-between;margin-top:6px;font-size:10px;color:var(--txt3)}
+.kb-durum{margin-top:14px;padding:13px 15px;border-radius:12px;border-left:3px solid}
+.kb-durum-t{font-size:13px;font-weight:700;margin-bottom:4px}
+.kb-durum-m{font-size:12.5px;line-height:1.55;color:var(--txt2)}
 </style>
 </head>
 <body>
@@ -266,7 +279,7 @@ const sb = createClient(SB_URL, SB_KEY);
 const MN = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
 const DOW = ['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'];
 const DAYNAMES = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
-const HEDEF = { kalori:2600, protein:200, karb:220, yag:75 };
+const HEDEF = { kalori:1800, protein:200, karb:220, yag:75 };
 const SUPPS = ['Whey','Kreatin','Omega 3','D Vitamini','K Vitamini','NMN','Coenzyme Q10','C Vitamini','B12','Magnezyum','Çinko','Bromelain','Resveratrol'];
 
 const KAS_GRUPLARI = [
@@ -515,7 +528,54 @@ function viewBesl(){
   const og = cache.ogun[selDate]||[];
   const t = totals(selDate);
   if(!og.length) return `<div class="page on"><div class="empty">${I.empty}<div>Bu gün öğün kaydı yok.</div></div></div>`;
+
+  const hedef = HEDEF.kalori;
+  const alinan = t.kalori;
+  const yuzde = Math.round(alinan/hedef*100);
+  const kalan = hedef - alinan;
+  const asim = alinan - hedef;
+
+  // Durum analizi + renk
+  let durumRenk, durumBaslik, durumMetin, barRenk;
+  if(yuzde < 70){
+    durumRenk='var(--blue)'; barRenk='var(--blue)';
+    durumBaslik='Hedefin altındasın';
+    durumMetin=`${kalan} kcal daha alabilirsin. Gün bitmeden öğünlerini tamamlamayı unutma.`;
+  } else if(yuzde <= 100){
+    durumRenk='var(--green)'; barRenk='var(--green)';
+    durumBaslik='Harika gidiyorsun';
+    durumMetin=kalan>0 ? `Hedefine çok yakınsın, ${kalan} kcal bütçen kaldı.` : `Tam hedefindesin! Mükemmel denge.`;
+  } else if(yuzde <= 115){
+    durumRenk='var(--amber)'; barRenk='var(--amber)';
+    durumBaslik='Hedefi biraz aştın';
+    durumMetin=`${asim} kcal fazla aldın. Yarın biraz daha dikkatli olabilir veya bugün hareket ekleyebilirsin.`;
+  } else {
+    durumRenk='var(--red)'; barRenk='var(--red)';
+    durumBaslik='Hedefi belirgin aştın';
+    durumMetin=`${asim} kcal fazladasın (%${yuzde-100} aşım). Akşam hafif tutmak veya kardiyo eklemek dengeyi toparlar.`;
+  }
+
+  const barDoluluk = Math.min(100, yuzde);
+  const asimBar = yuzde>100 ? Math.min(100, yuzde-100) : 0;
+
   return `<div class="page on">
+    <div class="card kalori-card">
+      <div class="ctitle">${I.chart} Günlük Kalori Bütçesi</div>
+      <div class="kb-head">
+        <div class="kb-big" style="color:${durumRenk}">${alinan}<span class="kb-slash">/ ${hedef}</span></div>
+        <div class="kb-pct" style="background:${durumRenk}1f;color:${durumRenk}">%${yuzde}</div>
+      </div>
+      <div class="kb-track">
+        <div class="kb-fill" style="width:${barDoluluk}%;background:${barRenk}"></div>
+        ${asimBar>0?`<div class="kb-over" style="width:${asimBar}%"></div>`:''}
+      </div>
+      <div class="kb-scale"><span>0</span><span>${Math.round(hedef/2)}</span><span>${hedef}</span></div>
+      <div class="kb-durum" style="border-left-color:${durumRenk};background:${durumRenk}14">
+        <div class="kb-durum-t" style="color:${durumRenk}">${durumBaslik}</div>
+        <div class="kb-durum-m">${durumMetin}</div>
+      </div>
+    </div>
+
     <div class="stats" style="grid-template-columns:repeat(4,1fr)">
       <div class="stat"><div class="stat-label">Kalori</div><div class="stat-val">${t.kalori}</div></div>
       <div class="stat"><div class="stat-label">Protein</div><div class="stat-val green">${t.protein}<span class="u">g</span></div></div>
