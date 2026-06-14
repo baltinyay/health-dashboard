@@ -187,6 +187,9 @@ body{
 .chat-send:active{transform:scale(.92)}
 .chat-send:disabled{opacity:.4;cursor:not-allowed}
 .chat-send svg{width:19px;height:19px}
+.chat-foto{width:44px;height:44px;border-radius:13px;background:var(--card);border:1px solid var(--line);color:var(--txt2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.15s}
+.chat-foto:active{transform:scale(.92)}
+.chat-foto svg{width:20px;height:20px}
 
 /* ANTRENMAN DEFTERİ */
 .agrp{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);margin-bottom:10px;overflow:hidden}
@@ -308,6 +311,7 @@ const I = {
   chat:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>',
   send:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>',
   save:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>',
+  camera:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>',
 };
 
 const TABS = [
@@ -787,6 +791,8 @@ function viewKocu(){
       </div>` : chatGecmis.map(m=>`<div class="msg ${m.rol==='kullanici'?'user':'koc'}">${escapeHtml(m.metin)}</div>`).join('')}
     </div>
     <div class="chat-input">
+      <button class="chat-foto" id="chatFoto" title="Tartı/tahlil fotoğrafı yükle">${I.camera}</button>
+      <input type="file" id="fotoInput" accept="image/*" style="display:none">
       <textarea id="chatInput" rows="1" placeholder="Koçuna yaz…"></textarea>
       <button class="chat-send" id="chatSend">${I.send}</button>
     </div>
@@ -800,19 +806,61 @@ function bindChat(){
   const sendBtn = document.getElementById('chatSend');
   if(!input) return;
 
-  // Otomatik yükseklik
   input.addEventListener('input', ()=>{ input.style.height='auto'; input.style.height=Math.min(120,input.scrollHeight)+'px'; });
-  // Enter ile gönder (Shift+Enter satır atlar)
   input.addEventListener('keydown', e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); gonder(); } });
   sendBtn.onclick = gonder;
-  // Hazır sorular
   document.querySelectorAll('.chip').forEach(c=>{
     c.onclick = ()=>{ input.value=c.dataset.chip; gonder(); };
   });
+
+  // Foto butonu
+  const fotoBtn = document.getElementById('chatFoto');
+  const fotoInput = document.getElementById('fotoInput');
+  if(fotoBtn && fotoInput){
+    fotoBtn.onclick = ()=> fotoInput.click();
+    fotoInput.onchange = ()=>{ if(fotoInput.files[0]) fotoGonder(fotoInput.files[0]); };
+  }
   scrollChat();
 }
 
 function scrollChat(){ const m=document.getElementById('chatMsgs'); if(m) m.scrollTop=m.scrollHeight; }
+
+let bekleyenOnay = null; // görsel okuması sonrası onay bekleyen veri
+
+async function fotoGonder(file){
+  // Tartı mı tahlil mi? Basit sor.
+  const tip = confirm('Bu bir TAHLİL mi? (İptal = Tartı)') ? 'tahlil' : 'tarti';
+
+  // base64'e çevir
+  const base64 = await new Promise((res,rej)=>{
+    const r = new FileReader();
+    r.onload = ()=>res(r.result);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+
+  chatGecmis.push({rol:'kullanici', metin:`📷 ${tip==='tahlil'?'Tahlil':'Tartı'} fotoğrafı yüklendi`});
+  const msgs = document.getElementById('chatMsgs');
+  msgs.innerHTML = chatGecmis.map(m=>`<div class="msg ${m.rol==='kullanici'?'user':'koc'}">${escapeHtml(m.metin)}</div>`).join('')
+    + '<div class="msg typing" id="typing"><span></span><span></span><span></span></div>';
+  scrollChat();
+
+  try{
+    const res = await fetch('/.netlify/functions/chat', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ gorsel: base64, gorsel_tip: tip, tarih: selDate }),
+    });
+    const data = await res.json();
+    chatGecmis.push({rol:'koc', metin:data.cevap||'Görsel okunamadı.'});
+    if(data.bekleyen) bekleyenOnay = data.bekleyen;
+  }catch(e){
+    chatGecmis.push({rol:'koc', metin:'Bağlantı hatası: '+e.message});
+  }
+  document.getElementById('fotoInput').value='';
+  document.getElementById('chatMsgs').innerHTML = chatGecmis.map(m=>`<div class="msg ${m.rol==='kullanici'?'user':'koc'}">${escapeHtml(m.metin)}</div>`).join('');
+  scrollChat();
+}
 
 async function gonder(){
   const input = document.getElementById('chatInput');
@@ -824,7 +872,6 @@ async function gonder(){
   input.value=''; input.style.height='auto';
   sendBtn.disabled = true;
 
-  // Mesajları yeniden çiz + yazıyor göstergesi
   const msgs = document.getElementById('chatMsgs');
   msgs.innerHTML = chatGecmis.map(m=>`<div class="msg ${m.rol==='kullanici'?'user':'koc'}">${escapeHtml(m.metin)}</div>`).join('')
     + '<div class="msg typing" id="typing"><span></span><span></span><span></span></div>';
@@ -834,15 +881,13 @@ async function gonder(){
     const res = await fetch('/.netlify/functions/chat', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ mesaj:text, tarih: selDate, gecmis: chatGecmis.slice(0,-1) }),
+      body: JSON.stringify({ mesaj:text, tarih: selDate, gecmis: chatGecmis.slice(0,-1), bekleyen: bekleyenOnay }),
     });
     const data = await res.json();
     let cevap;
     if(data.cevap){
       cevap = data.cevap;
-      // Kayıt yapıldıysa tüm veriyi Supabase'den taze çek —
-      // böylece Özet/Beslenme/Antrenman sekmeleri anında güncel olur.
-      if(data.saved){ await fetchData(); }
+      if(data.saved){ bekleyenOnay = null; await fetchData(); }
     } else {
       cevap = 'Hata detayı: ' + JSON.stringify(data.detay || data.error || data).slice(0, 500);
     }
