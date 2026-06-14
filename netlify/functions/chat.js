@@ -55,7 +55,7 @@ exports.handler = async function (event) {
     if (onay) return await onayliKaydet(ctx, onay);
 
     // ---- SİLME KOMUTU MU? ----
-    const silme = silmeKomutu(mesaj);
+    const silme = silmeKomutu(mesaj, tarih);
     if (silme) return await silmeYap(ctx, silme, mesaj);
 
     // ---- KALORİ HEDEFİ GÜNCELLEME Mİ? ----
@@ -364,6 +364,8 @@ async function tahlilMetniOku(metin, tarih) {
 
   const prompt = `Bu bir laboratuvar kan tahlili raporunun metni. İçindeki TÜM test parametrelerini ayrıştır. Yorum yapma, sadece veriyi çıkar.
 
+ÖNEMLİ - RAPOR TARİHİ: Raporun "Numune Alma Zamanı" tarihini bul (kanın alındığı gün). Bunu YYYY-MM-DD formatında "rapor_tarihi" alanına yaz. Örnek: "13.06.2026 09:26" → "2026-06-13". Numune alma zamanı yoksa numune kabul veya istem zamanını kullan.
+
 Her parametre için şu alanları bul:
 - ad: tetkik adı (örn "Vitamin B12", "TSH", "Demir")
 - deger: güncel sonuç (sayı, birimiyle örn "547 pg/mL")
@@ -374,7 +376,7 @@ Her parametre için şu alanları bul:
 "Çalışılıyor" yazan veya sonucu olmayan parametreleri ATLA.
 
 SADECE şu JSON formatında dön, başka hiçbir şey yazma:
-{"baslik":"Kan Tahlili","tarih_metinde":"varsa rapor tarihi","degerler":[{"ad":"...","deger":"...","referans":"...","onceki":"...","durum":"ok"}]}
+{"baslik":"Kan Tahlili","rapor_tarihi":"2026-06-13","degerler":[{"ad":"...","deger":"...","referans":"...","onceki":"...","durum":"ok"}]}
 
 Tahlil metni:
 ${kisaMetin}`;
@@ -408,9 +410,15 @@ ${kisaMetin}`;
     const deg = okunan.degerler || [];
     if (!deg.length) return json({ cevap: "Tahlilde değer bulunamadı." });
 
+    // PDF'teki rapor tarihini kullan (yükleme günü değil)
+    let tahlilTarih = tarih;
+    if (okunan.rapor_tarihi && /^\d{4}-\d{2}-\d{2}$/.test(okunan.rapor_tarihi)) {
+      tahlilTarih = okunan.rapor_tarihi;
+    }
+
     // Anormal olanları özetle (hepsini değil, çok uzun olmasın)
     const anormal = deg.filter((d) => d.durum === "lo" || d.durum === "hi");
-    let ozet = `📋 Tahlilden ${deg.length} parametre okudum (${tarih}).\n\n`;
+    let ozet = `📋 Tahlilden ${deg.length} parametre okudum.\n📅 Tahlil tarihi: ${tahlilTarih}\n\n`;
     if (anormal.length) {
       ozet += `⚠️ Aralık dışı ${anormal.length} değer:\n`;
       ozet += anormal.slice(0, 15).map((d) => `• ${d.ad}: ${d.deger} (${d.durum === "lo" ? "düşük" : "yüksek"})`).join("\n");
@@ -420,7 +428,7 @@ ${kisaMetin}`;
     }
     ozet += `\n\n✅ Kaydetmek için "evet" yaz, iptal için "hayır".`;
 
-    return json({ cevap: ozet, bekleyen: { tip: "tahlil", tarih, veri: okunan } });
+    return json({ cevap: ozet, bekleyen: { tip: "tahlil", tarih: tahlilTarih, veri: okunan } });
   } catch (e) {
     return json({ cevap: "Tahlil işlenirken hata: " + e.message });
   }
@@ -522,6 +530,8 @@ async function onayliKaydet(ctx, bekleyen) {
   }
   if (bekleyen.tip === "tahlil") {
     const v = bekleyen.veri;
+    // Aynı tarihte tahlil varsa önce sil (üzerine yazma)
+    await sbDelete({ ...ctx, tarih }, `tahliller?tarih=eq.${tarih}`);
     const r = await sbInsert({ ...ctx, tarih }, "tahliller", {
       tarih,
       baslik: v.baslik || "Kan Tahlili",
@@ -555,15 +565,30 @@ function hedefKomutu(mesaj, varsayilanTarih) {
 function tarihBul(mesaj, refTarih) {
   const t = temizle(mesaj);
   const aylar = { ocak:1, subat:2, mart:3, nisan:4, mayis:5, haziran:6, temmuz:7, agustos:8, eylul:9, ekim:10, kasim:11, aralik:12 };
+
+  // "14 haziran" / "1 temmuz" (ay ismi)
   const m = t.match(/(\d{1,2})\s*(ocak|subat|mart|nisan|mayis|haziran|temmuz|agustos|eylul|ekim|kasim|aralik)/);
   if (m) {
     const gun = String(m[1]).padStart(2, "0");
     const ay = String(aylar[m[2]]).padStart(2, "0");
-    const yil = new Date().getFullYear();
+    // yıl belirtilmişse al, yoksa bu yıl
+    const yilM = t.match(/20\d{2}/);
+    const yil = yilM ? yilM[0] : new Date().getFullYear();
     return `${yil}-${ay}-${gun}`;
   }
+
+  // "14.06.2026" / "14/06/2026" / "14-06-2026"
+  const m2 = t.match(/(\d{1,2})[.\/-](\d{1,2})[.\/-](20\d{2})/);
+  if (m2) {
+    return `${m2[3]}-${String(m2[2]).padStart(2,"0")}-${String(m2[1]).padStart(2,"0")}`;
+  }
+  // "2026-06-14" (zaten ISO)
+  const m3 = t.match(/(20\d{2})-(\d{1,2})-(\d{1,2})/);
+  if (m3) return `${m3[1]}-${String(m3[2]).padStart(2,"0")}-${String(m3[3]).padStart(2,"0")}`;
+
   const baz = refTarih ? new Date(refTarih) : new Date();
   if (/yarin/.test(t)) { baz.setDate(baz.getDate() + 1); return baz.toISOString().slice(0, 10); }
+  if (/dun/.test(t)) { baz.setDate(baz.getDate() - 1); return baz.toISOString().slice(0, 10); }
   if (/bugun/.test(t)) return refTarih || new Date().toISOString().slice(0, 10);
   return null;
 }
@@ -583,7 +608,7 @@ async function hedefGuncelle(ctx, hedef) {
 
 // ================= SİLME =================
 
-function silmeKomutu(mesaj) {
+function silmeKomutu(mesaj, ctxTarih) {
   // Formatlı kayıt (| içeren) ASLA silme değildir — önce bunu ele.
   if (mesaj.includes("|")) return null;
 
@@ -592,6 +617,12 @@ function silmeKomutu(mesaj) {
   if (!/\bsil\b|siler|silmek|sildim ?mi|sil$/.test(t)) return null;
 
   if (/tamamen|hepsini|her ?seyi/.test(t)) return { ne: "hepsi" };
+
+  // ---- TAHLİL SİLME (tarihli) ----
+  if (/tahlil|tetkik|kan ?sonuc|lab/.test(t)) {
+    const tarih = tarihBul(mesaj, ctxTarih);
+    return { ne: "tahlil", tarih: tarih || ctxTarih };
+  }
 
   // ---- "X DIŞINDAKİ / X HARİÇ" öğün silme ----
   if (/disinda|haric|disindaki|haricindeki/.test(t)) {
@@ -617,6 +648,14 @@ function silmeKomutu(mesaj) {
 
 async function silmeYap(ctx, silme, mesaj) {
   const yapilanlar = [];
+
+  // Tahlil silme (belirtilen tarihte)
+  if (silme.ne === "tahlil") {
+    const tarih = silme.tarih || ctx.tarih;
+    const r = await sbDelete(ctx, `tahliller?tarih=eq.${tarih}`);
+    if (r.ok) return json({ cevap: `🗑️ ${tarih} tarihli tahlil silindi.`, saved: true });
+    return json({ cevap: "⚠️ Silme yapılamadı: " + r.error });
+  }
 
   // "X dışındaki öğünleri sil" — korunan hariç hepsini sil
   if (silme.ne === "ogun_haric") {
