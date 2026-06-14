@@ -488,19 +488,19 @@ function viewOzet(){
     </div>`:''}
 
     <div class="card">
-      <div class="ctitle">${I.chart} Kalori Bütçesi <span style="margin-left:auto;font-size:11px;color:var(--txt2);font-weight:500">${alinan} / ${hedefKcal} kcal</span></div>
+      <div class="ctitle">${I.chart} Kalori <span style="margin-left:auto;font-size:11px;color:var(--txt2);font-weight:500">${alinan} / ${hedefKcal} kcal</span></div>
       <div class="kb-track"><div class="kb-fill" style="width:${Math.min(100,yuzde)}%;background:${bRenk}"></div>${yuzde>100?`<div class="kb-over" style="width:${Math.min(100,yuzde-100)}%"></div>`:''}</div>
       <div class="kb-budget">
-        <div class="kb-budget-item"><div class="kb-budget-v" style="color:${bRenk}">${alinan}</div><div class="kb-budget-l">tükettim</div></div>
-        <div class="kb-budget-item"><div class="kb-budget-v" style="color:${kalan>=0?'var(--green)':'var(--red)'}">${kalan>=0?kalan:'+'+Math.abs(kalan)}</div><div class="kb-budget-l">${kalan>=0?'kalan hakkım':'aşım'}</div></div>
-        <div class="kb-budget-item"><div class="kb-budget-v">%${yuzde}</div><div class="kb-budget-l">doluluk</div></div>
+        <div class="kb-budget-item"><div class="kb-budget-v" style="color:${bRenk}">${alinan}</div><div class="kb-budget-l">Tüketim</div></div>
+        <div class="kb-budget-item"><div class="kb-budget-v" style="color:${kalan>=0?'var(--green)':'var(--red)'}">${kalan>=0?kalan:'+'+Math.abs(kalan)}</div><div class="kb-budget-l">Kalan</div></div>
+        <div class="kb-budget-item"><div class="kb-budget-v">%${yuzde}</div><div class="kb-budget-l"></div></div>
       </div>
     </div>
 
     <div class="card">
       <div class="ctitle">${I.chart} Makro durumu</div>
       <div class="rings">
-        ${macros.map(([n,v,m,c])=>{const pct=Math.min(100,Math.round(v/m*100));return `<div class="ring-item"><div class="ring">${ring(pct,c)}<div class="ring-pct" style="color:${c}">${pct}%</div></div><div class="ring-name">${n}</div><div class="ring-val">${v}</div></div>`;}).join('')}
+        ${macros.map(([n,v,m,c])=>{const pct=Math.min(100,Math.round(v/m*100));return `<div class="ring-item"><div class="ring">${ring(pct,c)}<div class="ring-pct" style="color:${c};font-size:12px">${v}</div></div><div class="ring-name">${n}</div></div>`;}).join('')}
       </div>
     </div>
     ${trend.length>1?`<div class="card"><div class="ctitle">${I.chart} Kilo trendi</div><div class="chart-wrap"><canvas id="kiloChart"></canvas></div></div>`:''}
@@ -543,16 +543,35 @@ function drawKilo(){
   if(kiloChart) kiloChart.destroy();
   const data = cache.kiloTrend;
   const vals = data.map(r=>r.kilo);
-  const mn = Math.floor(Math.min(...vals)-1), mx = Math.ceil(Math.max(...vals)+1);
+  const mn = Math.floor(Math.min(...vals)-1), mx = Math.ceil(Math.max(...vals)+1.2);
+
+  // Her noktanın üstüne kg yazan küçük eklenti
+  const etiketPlugin = {
+    id:'kgEtiket',
+    afterDatasetsDraw(chart){
+      const {ctx} = chart;
+      const meta = chart.getDatasetMeta(0);
+      ctx.save();
+      ctx.font='600 11px -apple-system,sans-serif';
+      ctx.fillStyle='#E8EDF1';
+      ctx.textAlign='center';
+      meta.data.forEach((pt,i)=>{
+        ctx.fillText(vals[i], pt.x, pt.y-12);
+      });
+      ctx.restore();
+    }
+  };
+
   kiloChart = new Chart(el,{
     type:'line',
     data:{ labels:data.map(r=>{const[,m,d]=r.tarih.split('-');return d+'/'+m;}),
       datasets:[{data:vals,borderColor:'#2BD89A',borderWidth:2.5,tension:.4,fill:true,
         backgroundColor:(c)=>{const g=c.chart.ctx.createLinearGradient(0,0,0,230);g.addColorStop(0,'rgba(43,216,154,.25)');g.addColorStop(1,'rgba(43,216,154,0)');return g;},
         pointBackgroundColor:'#2BD89A',pointBorderColor:'#0B0E11',pointBorderWidth:2,pointRadius:5,pointHoverRadius:7}]},
-    options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{backgroundColor:'#1C242B',borderColor:'#2C3740',borderWidth:1,titleColor:'#8B97A3',bodyColor:'#E8EDF1',padding:10,displayColors:false,callbacks:{label:c=>c.parsed.y+' kg'}}},
-      scales:{y:{min:mn,max:mx,ticks:{color:'#5A6570',font:{size:11},callback:v=>v+' kg'},grid:{color:'rgba(255,255,255,.04)'}},x:{ticks:{color:'#5A6570',font:{size:11}},grid:{display:false}}}}
+    options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:18}},
+      plugins:{legend:{display:false},tooltip:{enabled:false}},
+      scales:{y:{min:mn,max:mx,ticks:{color:'#5A6570',font:{size:11},callback:v=>v+' kg'},grid:{color:'rgba(255,255,255,.04)'}},x:{ticks:{color:'#5A6570',font:{size:11}},grid:{display:false}}}},
+    plugins:[etiketPlugin]
   });
 }
 
@@ -592,7 +611,7 @@ function viewBesl(){
 
   return `<div class="page on">
     <div class="card kalori-card">
-      <div class="ctitle">${I.chart} Günlük Kalori Bütçesi</div>
+      <div class="ctitle">${I.chart} Kalori</div>
       <div class="kb-head">
         <div class="kb-big" style="color:${durumRenk}">${alinan}<span class="kb-slash">/ ${hedef}</span></div>
         <div class="kb-pct" style="background:${durumRenk}1f;color:${durumRenk}">%${yuzde}</div>
