@@ -499,6 +499,14 @@ function ayAraligi(ds){
   return { bas, bit };
 }
 
+// ISO hafta numarası (yılın kaçıncı haftası)
+function haftaNo(ds){
+  const d = new Date(ds); d.setHours(0,0,0,0);
+  d.setDate(d.getDate()+4-(d.getDay()||7));
+  const yilBasi = new Date(d.getFullYear(),0,1);
+  return Math.ceil((((d-yilBasi)/86400000)+1)/7);
+}
+
 // Bir tarih aralığındaki tüm verileri topla/ortala
 function donemOzeti(bas, bit){
   const gunler = [];
@@ -650,7 +658,9 @@ function viewDonem(mod){
   const aralik = mod==='hafta' ? haftaAraligi(selDate) : ayAraligi(selDate);
   const o = donemOzeti(aralik.bas, aralik.bit);
   const baslik = mod==='hafta' ? 'Bu Hafta' : 'Bu Ay';
-  const altBaslik = `${fmtDay(aralik.bas)} – ${fmtDay(aralik.bit)}`;
+  const altBaslik = mod==='hafta'
+    ? `${haftaNo(selDate)}. hafta · ${fmtDay(aralik.bas)} – ${fmtDay(aralik.bit)}`
+    : `${fmtDay(aralik.bas)} – ${fmtDay(aralik.bit)}`;
 
   if(o.kaloriliGun===0 && o.sporGun===0 && o.kiloDeg===null){
     return `<div class="empty" style="padding:40px 20px">${I.empty}<div>${baslik.toLowerCase()} için henüz veri yok.</div></div>`;
