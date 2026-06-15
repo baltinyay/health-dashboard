@@ -274,6 +274,9 @@ body{
 .spor-gun-stat{cursor:pointer;transition:.15s}
 .spor-gun-stat:active{transform:scale(.96)}
 .spor-gun-stat.aktif{border:1px solid var(--green)}
+.kalori-gun-stat{cursor:pointer;transition:.15s}
+.kalori-gun-stat:active{transform:scale(.96)}
+.kalori-gun-stat.aktif{border:1px solid var(--amber)}
 .spor-gun-row{border-bottom:1px solid var(--line)}
 .spor-gun-row:last-child{border:none}
 .spor-gun-head{display:flex;justify-content:space-between;align-items:center;padding:12px 0;cursor:pointer}
@@ -528,6 +531,8 @@ function totals(ds){
 let ozetMod = 'gun'; // gun | hafta | ay
 let donemSporAcik = false; // hafta/ay özetinde spor günleri listesi açık mı
 let donemSeciliGun = null; // açılan spor gününün tarihi
+let donemKaloriAcik = false; // kalori günleri listesi açık mı
+let donemSeciliKaloriGun = null; // açılan kalori gününün tarihi
 
 // Pazartesi-Pazar haftasının baş/bitiş tarihleri (seçili güne göre)
 function haftaAraligi(ds){
@@ -562,10 +567,12 @@ function donemOzeti(bas, bit){
   let topKcal=0, topP=0, topK=0, topY=0, kaloriliGun=0, sporGun=0;
   let enYuksek=null, enDusuk=null; // {tarih, kcal}
   const sporGunleri = [];
+  const kaloriGunleri = [];
   gunler.forEach(g=>{
     const t = totals(g);
     if(t.kalori>0){
       topKcal+=t.kalori; topP+=t.protein; topK+=t.karb; topY+=t.yag; kaloriliGun++;
+      kaloriGunleri.push({tarih:g, kcal:t.kalori});
       if(!enYuksek || t.kalori>enYuksek.kcal) enYuksek={tarih:g, kcal:t.kalori};
       if(!enDusuk || t.kalori<enDusuk.kcal) enDusuk={tarih:g, kcal:t.kalori};
     }
@@ -590,7 +597,7 @@ function donemOzeti(bas, bit){
     ortK: kaloriliGun?Math.round(topK/kaloriliGun):0,
     ortY: kaloriliGun?Math.round(topY/kaloriliGun):0,
     kiloDeg, ilkKilo, sonKilo,
-    enYuksek, enDusuk, sporGunleri,
+    enYuksek, enDusuk, sporGunleri, kaloriGunleri,
   };
 }
 
@@ -697,16 +704,27 @@ function ozetOgunler(){
 
 function bindOzet(){
   document.querySelectorAll('.ozet-mod-btn').forEach(el=>{
-    el.onclick = ()=>{ ozetMod = el.dataset.mod; donemSporAcik=false; donemSeciliGun=null; render(); };
+    el.onclick = ()=>{ ozetMod = el.dataset.mod; donemSporAcik=false; donemSeciliGun=null; donemKaloriAcik=false; donemSeciliKaloriGun=null; render(); };
   });
   // Spor Günü kartına tıkla → listeyi aç/kapa
   const sg = document.getElementById('sporGunStat');
   if(sg) sg.onclick = ()=>{ donemSporAcik = !donemSporAcik; donemSeciliGun=null; render(); };
   // Spor günü satırına tıkla → detay aç/kapa
-  document.querySelectorAll('.spor-gun-head').forEach(el=>{
+  document.querySelectorAll('.spor-gun-head:not(.kalori-gun-head)').forEach(el=>{
     el.onclick = ()=>{
       const g = el.dataset.gun;
       donemSeciliGun = (donemSeciliGun===g) ? null : g;
+      render();
+    };
+  });
+  // Ort. Kalori kartına tıkla → listeyi aç/kapa
+  const kg = document.getElementById('kaloriGunStat');
+  if(kg) kg.onclick = ()=>{ donemKaloriAcik = !donemKaloriAcik; donemSeciliKaloriGun=null; render(); };
+  // Kalori günü satırına tıkla → öğün detayı aç/kapa
+  document.querySelectorAll('.kalori-gun-head').forEach(el=>{
+    el.onclick = ()=>{
+      const g = el.dataset.gun;
+      donemSeciliKaloriGun = (donemSeciliKaloriGun===g) ? null : g;
       render();
     };
   });
@@ -746,7 +764,7 @@ function viewDonem(mod){
       <div class="ctitle" style="justify-content:center">${I.chart} ${baslik} Özeti</div>
       <div style="font-size:11px;color:var(--txt3);margin-top:-8px;margin-bottom:16px">${altBaslik}</div>
       <div class="stats" style="margin-bottom:12px">
-        <div class="stat"><div class="stat-label">Ort. Kalori</div><div class="stat-val amber">${o.ortKcal}</div></div>
+        <div class="stat kalori-gun-stat ${donemKaloriAcik?'aktif':''}" id="kaloriGunStat"><div class="stat-label">Ort. Kalori</div><div class="stat-val amber">${o.ortKcal} ${o.kaloriliGun>0?'▾':''}</div></div>
         <div class="stat spor-gun-stat ${donemSporAcik?'aktif':''}" id="sporGunStat"><div class="stat-label">Spor Günü</div><div class="stat-val green">${o.sporGun} ${o.sporGun>0?'▾':''}</div></div>
         <div class="stat"><div class="stat-label">Kayıtlı Gün</div><div class="stat-val">${o.kaloriliGun}/${o.gunSayisi}</div></div>
       </div>
@@ -756,6 +774,23 @@ function viewDonem(mod){
         <div class="stat"><div class="stat-label">Ort. Yağ</div><div class="stat-val amber">${o.ortY}<span class="u">g</span></div></div>
       </div>
     </div>
+    ${donemKaloriAcik && o.kaloriGunleri.length ? `<div class="card">
+      <div class="ctitle">${I.food} Günlük Kaloriler</div>
+      ${o.kaloriGunleri.map(kg=>{
+        const g = kg.tarih;
+        const og = cache.ogun[g]||[];
+        const acik = donemSeciliKaloriGun===g;
+        return `<div class="spor-gun-row">
+          <div class="spor-gun-head kalori-gun-head" data-gun="${g}">
+            <div><div style="font-size:13px;font-weight:600">${fmtDay(g)} · ${DAYNAMES[new Date(g).getDay()]}</div><div style="font-size:11px;color:var(--txt2)">${og.length} öğün</div></div>
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:13px;color:var(--amber);font-weight:700">${kg.kcal} kcal</span><span style="color:var(--txt3)">${acik?'▾':'▸'}</span></div>
+          </div>
+          ${acik?`<div class="spor-gun-detay">
+            ${og.map(o2=>`<div class="ogun"><div class="ohead"><div class="oname">${o2.ogun||'Öğün'}</div><div class="okcal">${o2.kcal||0} kcal</div></div><div class="omacro"><span class="opill">P ${o2.protein||0}g</span><span class="opill">K ${o2.karb||0}g</span><span class="opill">Y ${o2.yag||0}g</span></div>${o2.yiyecekler?`<div class="ofood">${o2.yiyecekler}</div>`:''}</div>`).join('')}
+          </div>`:''}
+        </div>`;
+      }).join('')}
+    </div>`:''}
     ${donemSporAcik && o.sporGunleri.length ? `<div class="card">
       <div class="ctitle">${I.dumbbell} Spor Günleri</div>
       ${o.sporGunleri.map(g=>{
