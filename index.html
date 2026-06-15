@@ -215,6 +215,17 @@ body{
 .asaveb svg{width:18px;height:18px}
 .atip-input{width:100%;background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 14px;color:var(--txt);font-size:14px;font-family:inherit;margin-bottom:12px}
 .atip-input:focus{border-color:var(--green);outline:none}
+.ant-ust{display:flex;gap:8px;align-items:stretch;margin-bottom:12px}
+.ant-duzen-btn{flex-shrink:0;background:var(--card);border:1px solid var(--line);color:var(--txt2);border-radius:var(--radius-sm);padding:0 16px;font-size:15px;font-weight:600;cursor:pointer;transition:.15s}
+.ant-duzen-btn.on{background:var(--green);color:#04120C;border-color:var(--green)}
+.ant-duzen-btn:active{transform:scale(.95)}
+.aex-duzen{display:flex;align-items:center;justify-content:space-between;padding:12px 8px;border-top:1px solid var(--line)}
+.hareket-sil{background:rgba(255,92,92,.12);border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:14px}
+.hareket-sil:active{transform:scale(.92)}
+.hareket-ekle{width:100%;background:var(--green-bg);border:1px dashed var(--green-d);color:var(--green);border-radius:10px;padding:11px;font-size:13px;font-weight:600;cursor:pointer;margin-top:8px}
+.hareket-ekle:active{transform:scale(.98)}
+.grup-ekle{width:100%;background:var(--card);border:1px dashed var(--line2);color:var(--txt);border-radius:var(--radius-sm);padding:14px;font-size:14px;font-weight:600;cursor:pointer;margin-top:6px}
+.grup-ekle:active{transform:scale(.98)}
 
 /* KALORİ BÜTÇE GRAFİĞİ */
 .kb-head{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:14px}
@@ -358,7 +369,30 @@ let cy = new Date().getFullYear(), cm = new Date().getMonth();
 let calOpen = false;
 let kiloChart = null;
 
-const cache = { olcum:{}, ogun:{}, ant:{}, supp:{}, lab:[], kiloTrend:[], hedefler:[], loaded:false };
+const cache = { olcum:{}, ogun:{}, ant:{}, supp:{}, lab:[], kiloTrend:[], hedefler:[], hareketler:[], loaded:false };
+
+// Kas grupları sırası (yeni grup eklenirse sona eklenir)
+const GRUP_SIRA = ['Göğüs','Triceps','Sırt','Biceps','Omuz','Bacak'];
+
+// Supabase'deki hareketlerden kas gruplarını dinamik oluştur
+function kasGruplari(){
+  if(!cache.hareketler.length) return KAS_GRUPLARI; // henüz yüklenmediyse varsayılan
+  const gruplar = {};
+  cache.hareketler.forEach(h=>{
+    (gruplar[h.kas_grubu] = gruplar[h.kas_grubu] || []).push(h);
+  });
+  // Sıralama: bilinen gruplar önce (GRUP_SIRA), sonra yeni eklenenler
+  const adlar = Object.keys(gruplar);
+  adlar.sort((a,b)=>{
+    let ia = GRUP_SIRA.indexOf(a), ib = GRUP_SIRA.indexOf(b);
+    if(ia<0) ia=999; if(ib<0) ib=999;
+    return ia-ib || a.localeCompare(b);
+  });
+  return adlar.map(ad=>({
+    ad,
+    hareketler: gruplar[ad].sort((x,y)=>(x.sira||0)-(y.sira||0)).map(h=>h.hareket)
+  }));
+}
 
 // Belirli bir güne ait kalori hedefini bul (o güne kadar olan en son hedef)
 function gununHedefi(ds){
@@ -369,15 +403,16 @@ function gununHedefi(ds){
 }
 
 async function fetchData(){
-  cache.olcum={}; cache.ogun={}; cache.ant={}; cache.supp={}; cache.lab=[]; cache.kiloTrend=[]; cache.hedefler=[];
+  cache.olcum={}; cache.ogun={}; cache.ant={}; cache.supp={}; cache.lab=[]; cache.kiloTrend=[]; cache.hedefler=[]; cache.hareketler=[];
   try{
-    const [olcum, ogun, ant, supp, lab, hedefler] = await Promise.all([
+    const [olcum, ogun, ant, supp, lab, hedefler, hareketler] = await Promise.all([
       sb.from('gunluk_olcum').select('*'),
       sb.from('ogunler').select('*'),
       sb.from('antrenmanlar').select('*'),
       sb.from('supplementler').select('*'),
       sb.from('tahliller').select('*'),
       sb.from('hedefler').select('*'),
+      sb.from('hareketler').select('*'),
     ]);
     (olcum.data||[]).forEach(r=>cache.olcum[r.tarih]=r);
     (ogun.data||[]).forEach(r=>{ (cache.ogun[r.tarih]=cache.ogun[r.tarih]||[]).push(r); });
@@ -386,6 +421,7 @@ async function fetchData(){
     cache.lab = (lab.data||[]).sort((a,b)=>(b.tarih||'').localeCompare(a.tarih||''));
     cache.kiloTrend = (olcum.data||[]).filter(r=>r.kilo).sort((a,b)=>a.tarih.localeCompare(b.tarih));
     cache.hedefler = hedefler.data || [];
+    cache.hareketler = hareketler.data || [];
   }catch(e){
     console.error(e);
   }
@@ -822,46 +858,64 @@ function viewBesl(){
   </div>`;
 }
 
+let antDuzenMod = false; // hareket ekleme/silme modu
+
 function viewAnt(){
-  // Seçili günün kayıtlı verisini al, hareketlere göre eşle
   const a = cache.ant[selDate];
   const kayitli = {};
   if(a && Array.isArray(a.egzersizler)){
     a.egzersizler.forEach(e=>{ if(e.ad) kayitli[e.ad] = e; });
   }
   const tipDeger = a && a.tip ? a.tip : '';
+  const gruplar = kasGruplari();
 
   let html = `<div class="page on">
-    <input class="atip-input" id="antTip" placeholder="Antrenman adı (örn. Push, Göğüs günü)" value="${tipDeger.replace(/"/g,'&quot;')}">`;
+    <div class="ant-ust">
+      <input class="atip-input" id="antTip" placeholder="Antrenman adı (örn. Push, Göğüs günü)" value="${tipDeger.replace(/"/g,'&quot;')}" style="margin-bottom:0">
+      <button class="ant-duzen-btn ${antDuzenMod?'on':''}" id="antDuzen" title="Hareketleri düzenle">${antDuzenMod?'Bitti':'✏️'}</button>
+    </div>`;
 
-  KAS_GRUPLARI.forEach((grup,gi)=>{
+  gruplar.forEach((grup,gi)=>{
     const doluSayisi = grup.hareketler.filter(h=>kayitli[h]).length;
     html += `<div class="agrp">
-      <div class="agrph${doluSayisi?' on':''}" data-grup="${gi}">
+      <div class="agrph${doluSayisi||antDuzenMod?' on':''}" data-grup="${gi}">
         <div class="agrpn">${I.dumbbell} ${grup.ad}</div>
         <div class="agrpc">${grup.hareketler.length} hareket${doluSayisi?` · ${doluSayisi} dolu`:''} <span class="acaret">▸</span></div>
       </div>
-      <div class="aexs${doluSayisi?' open':''}">`;
+      <div class="aexs${doluSayisi||antDuzenMod?' open':''}">`;
     grup.hareketler.forEach(h=>{
       const k = kayitli[h] || {};
-      html += `<div class="aex">
-        <div class="aexn">${h}</div>
-        <div class="asets">
-          <div class="asetbox"><label>Ağırlık (kg)</label><input type="text" inputmode="decimal" data-h="${h}" data-f="kg" value="${k.kg??''}" placeholder="0"></div>
-          <div class="asetbox"><label>Tekrar</label><input type="text" inputmode="numeric" data-h="${h}" data-f="tekrar" value="${k.tekrar??''}" placeholder="0"></div>
-          <div class="asetbox"><label>Set</label><input type="text" inputmode="numeric" data-h="${h}" data-f="set" value="${k.set??''}" placeholder="0"></div>
-        </div>
-      </div>`;
+      if(antDuzenMod){
+        // Düzenleme modu: hareket adı + sil butonu
+        html += `<div class="aex-duzen"><span class="aexn">${h}</span><button class="hareket-sil" data-grup="${grup.ad}" data-hareket="${h.replace(/"/g,'&quot;')}">🗑️</button></div>`;
+      } else {
+        html += `<div class="aex">
+          <div class="aexn">${h}</div>
+          <div class="asets">
+            <div class="asetbox"><label>Ağırlık (kg)</label><input type="text" inputmode="decimal" data-h="${h}" data-f="kg" value="${k.kg??''}" placeholder="0"></div>
+            <div class="asetbox"><label>Tekrar</label><input type="text" inputmode="numeric" data-h="${h}" data-f="tekrar" value="${k.tekrar??''}" placeholder="0"></div>
+            <div class="asetbox"><label>Set</label><input type="text" inputmode="numeric" data-h="${h}" data-f="set" value="${k.set??''}" placeholder="0"></div>
+          </div>
+        </div>`;
+      }
     });
+    // Düzenleme modunda: bu gruba hareket ekle butonu
+    if(antDuzenMod){
+      html += `<button class="hareket-ekle" data-grup="${grup.ad}">+ ${grup.ad} grubuna hareket ekle</button>`;
+    }
     html += `</div></div>`;
   });
 
-  html += `<button class="asaveb" id="antSave">${I.save} Antrenmanı Kaydet</button></div>`;
+  if(antDuzenMod){
+    html += `<button class="grup-ekle" id="grupEkle">+ Yeni kas grubu ekle</button>`;
+  } else {
+    html += `<button class="asaveb" id="antSave">${I.save} Antrenmanı Kaydet</button>`;
+  }
+  html += `</div>`;
   return html;
 }
 
 function bindAnt(){
-  // Grup aç/kapa
   document.querySelectorAll('.agrph').forEach(h=>{
     h.onclick = ()=>{
       const exs = h.nextElementSibling;
@@ -869,14 +923,60 @@ function bindAnt(){
       h.classList.toggle('on', acik || exs.querySelector('input.dolu'));
     };
   });
-  // Dolu kutuları işaretle
   document.querySelectorAll('.asetbox input').forEach(inp=>{
     if(inp.value.trim()) inp.classList.add('dolu');
     inp.addEventListener('input', ()=>{ inp.classList.toggle('dolu', inp.value.trim()!==''); });
   });
-  // Kaydet
   const btn = document.getElementById('antSave');
   if(btn) btn.onclick = antKaydet;
+
+  // Düzenleme modu aç/kapa
+  const dz = document.getElementById('antDuzen');
+  if(dz) dz.onclick = ()=>{ antDuzenMod = !antDuzenMod; render(); };
+
+  // Hareket sil
+  document.querySelectorAll('.hareket-sil').forEach(b=>{
+    b.onclick = ()=> hareketSil(b.dataset.grup, b.dataset.hareket);
+  });
+  // Hareket ekle
+  document.querySelectorAll('.hareket-ekle').forEach(b=>{
+    b.onclick = ()=> hareketEkle(b.dataset.grup);
+  });
+  // Grup ekle
+  const ge = document.getElementById('grupEkle');
+  if(ge) ge.onclick = grupEkle;
+}
+
+async function hareketEkle(grup){
+  const ad = prompt(`"${grup}" grubuna eklenecek hareket adı:`);
+  if(!ad || !ad.trim()) return;
+  const enBuyukSira = Math.max(0, ...cache.hareketler.filter(h=>h.kas_grubu===grup).map(h=>h.sira||0));
+  try{
+    const { error } = await sb.from('hareketler').insert({ kas_grubu:grup, hareket:ad.trim(), sira:enBuyukSira+1 });
+    if(error) throw error;
+    await fetchData(); render();
+  }catch(e){ alert('Eklenemedi: '+(e.message||e)); }
+}
+
+async function hareketSil(grup, hareket){
+  if(!confirm(`"${hareket}" silinsin mi?`)) return;
+  try{
+    const { error } = await sb.from('hareketler').delete().eq('kas_grubu',grup).eq('hareket',hareket);
+    if(error) throw error;
+    await fetchData(); render();
+  }catch(e){ alert('Silinemedi: '+(e.message||e)); }
+}
+
+async function grupEkle(){
+  const ad = prompt('Yeni kas grubu adı (örn. Karın, Ön Kol):');
+  if(!ad || !ad.trim()) return;
+  const hareket = prompt(`"${ad.trim()}" grubuna ilk hareketi ekle:`);
+  if(!hareket || !hareket.trim()) return;
+  try{
+    const { error } = await sb.from('hareketler').insert({ kas_grubu:ad.trim(), hareket:hareket.trim(), sira:1 });
+    if(error) throw error;
+    await fetchData(); render();
+  }catch(e){ alert('Eklenemedi: '+(e.message||e)); }
 }
 
 async function antKaydet(){
