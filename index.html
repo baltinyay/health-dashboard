@@ -254,6 +254,12 @@ body{
 .lab-filt{cursor:pointer;transition:.15s;border:1px solid var(--line)}
 .lab-filt:active{transform:scale(.96)}
 .lab-filt.aktif{border-color:var(--green);background:var(--green-bg)}
+
+/* ÖZET GÜN/HAFTA/AY GEÇİŞİ */
+.ozet-mod{display:flex;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:13px;padding:4px;margin-bottom:14px}
+.ozet-mod-btn{flex:1;text-align:center;padding:9px;border-radius:10px;font-size:13px;font-weight:600;color:var(--txt2);cursor:pointer;transition:.15s}
+.ozet-mod-btn:active{transform:scale(.97)}
+.ozet-mod-btn.on{background:var(--green);color:#04120C}
 </style>
 </head>
 <body>
@@ -457,12 +463,12 @@ function render(){
   // böylece hangi güne kayıt/silme yaptığın belli olur.
   document.querySelector('.datestrip').style.display = 'flex';
   if(curTab==='kocu'){ p.innerHTML = viewKocu(); bindChat(); }
-  else if(curTab==='ozet') p.innerHTML = viewOzet();
+  else if(curTab==='ozet'){ p.innerHTML = viewOzet(); bindOzet(); }
   else if(curTab==='besl') p.innerHTML = viewBesl();
   else if(curTab==='ant'){ p.innerHTML = viewAnt(); bindAnt(); }
   else if(curTab==='supp'){ p.innerHTML = viewSupp(); bindSupp(); }
   else if(curTab==='lab'){ p.innerHTML = viewLab(); bindLab(); }
-  if(curTab==='ozet' && cache.kiloTrend.length) setTimeout(drawKilo,50);
+  if(curTab==='ozet' && ozetMod==='gun' && cache.kiloTrend.length) setTimeout(drawKilo,50);
 }
 
 function totals(ds){
@@ -475,15 +481,84 @@ function totals(ds){
   };
 }
 
+let ozetMod = 'gun'; // gun | hafta | ay
+
+// Pazartesi-Pazar haftasının baş/bitiş tarihleri (seçili güne göre)
+function haftaAraligi(ds){
+  const d = new Date(ds);
+  let gun = d.getDay(); gun = gun===0?7:gun; // Pazartesi=1, Pazar=7
+  const bas = new Date(d); bas.setDate(d.getDate()-(gun-1));
+  const bit = new Date(bas); bit.setDate(bas.getDate()+6);
+  return { bas: bas.toISOString().slice(0,10), bit: bit.toISOString().slice(0,10) };
+}
+function ayAraligi(ds){
+  const [y,m] = ds.split('-');
+  const bas = `${y}-${m}-01`;
+  const son = new Date(+y, +m, 0).getDate();
+  const bit = `${y}-${m}-${String(son).padStart(2,'0')}`;
+  return { bas, bit };
+}
+
+// Bir tarih aralığındaki tüm verileri topla/ortala
+function donemOzeti(bas, bit){
+  const gunler = [];
+  let d = new Date(bas), son = new Date(bit);
+  while(d<=son){ gunler.push(d.toISOString().slice(0,10)); d.setDate(d.getDate()+1); }
+
+  let topKcal=0, topP=0, topK=0, topY=0, kaloriliGun=0, sporGun=0;
+  let enYuksek=null, enDusuk=null; // {tarih, kcal}
+  gunler.forEach(g=>{
+    const t = totals(g);
+    if(t.kalori>0){
+      topKcal+=t.kalori; topP+=t.protein; topK+=t.karb; topY+=t.yag; kaloriliGun++;
+      if(!enYuksek || t.kalori>enYuksek.kcal) enYuksek={tarih:g, kcal:t.kalori};
+      if(!enDusuk || t.kalori<enDusuk.kcal) enDusuk={tarih:g, kcal:t.kalori};
+    }
+    const a = cache.ant[g];
+    if(a && Array.isArray(a.egzersizler) && a.egzersizler.length) sporGun++;
+  });
+
+  // Kilo değişimi: dönemdeki ilk ve son ölçüm
+  const olcumler = gunler.map(g=>cache.olcum[g]).filter(o=>o&&o.kilo);
+  let kiloDeg=null, ilkKilo=null, sonKilo=null;
+  if(olcumler.length>=1){
+    ilkKilo = olcumler[0].kilo;
+    sonKilo = olcumler[olcumler.length-1].kilo;
+    if(olcumler.length>=2) kiloDeg = Math.round((sonKilo-ilkKilo)*10)/10;
+  }
+
+  return {
+    gunSayisi: gunler.length,
+    kaloriliGun, sporGun,
+    ortKcal: kaloriliGun?Math.round(topKcal/kaloriliGun):0,
+    ortP: kaloriliGun?Math.round(topP/kaloriliGun):0,
+    ortK: kaloriliGun?Math.round(topK/kaloriliGun):0,
+    ortY: kaloriliGun?Math.round(topY/kaloriliGun):0,
+    kiloDeg, ilkKilo, sonKilo,
+    enYuksek, enDusuk,
+  };
+}
+
 function viewOzet(){
+  // Gün/Hafta/Ay geçiş çubuğu (her modda üstte)
+  const modBar = `<div class="ozet-mod">
+    <div class="ozet-mod-btn ${ozetMod==='gun'?'on':''}" data-mod="gun">Gün</div>
+    <div class="ozet-mod-btn ${ozetMod==='hafta'?'on':''}" data-mod="hafta">Hafta</div>
+    <div class="ozet-mod-btn ${ozetMod==='ay'?'on':''}" data-mod="ay">Ay</div>
+  </div>`;
+
+  if(ozetMod==='hafta' || ozetMod==='ay'){
+    return `<div class="page on">${modBar}${viewDonem(ozetMod)}</div>`;
+  }
+
+  // ---- GÜN MODU (mevcut görünüm) ----
   const o = cache.olcum[selDate];
   const t = totals(selDate);
   const a = cache.ant[selDate];
   const antVar = a && Array.isArray(a.egzersizler) && a.egzersizler.length;
   const trend = cache.kiloTrend;
-  // Son ölçüm: o güne ait varsa o, yoksa trenddeki en son ölçüm
   const sonOlcum = o || (trend.length ? trend[trend.length-1] : null);
-  const olcumGuncel = !!o; // bu güne mi ait
+  const olcumGuncel = !!o;
   const hedefKcal = gununHedefi(selDate);
 
   let delta = 0;
@@ -508,6 +583,7 @@ function viewOzet(){
   else if(yuzde>115) bRenk='var(--red)';
 
   return `<div class="page on">
+    ${modBar}
     ${sonOlcum ? `<div class="hero">
       <div class="hero-label">${olcumGuncel?'Ağırlık':'Son ölçüm'} ${olcumGuncel?'':`· ${fmtDay(sonOlcum.tarih)}`}</div>
       <div class="hero-val">${sonOlcum.kilo}<span class="hero-unit"> kg</span></div>
@@ -562,6 +638,76 @@ function ozetOgunler(){
       <div style="font-size:13px;color:var(--green);font-weight:700;margin-left:10px;flex-shrink:0">${o.kcal||0} kcal</div>
     </div>`).join('')}
   </div>`;
+}
+
+function bindOzet(){
+  document.querySelectorAll('.ozet-mod-btn').forEach(el=>{
+    el.onclick = ()=>{ ozetMod = el.dataset.mod; render(); };
+  });
+}
+
+function viewDonem(mod){
+  const aralik = mod==='hafta' ? haftaAraligi(selDate) : ayAraligi(selDate);
+  const o = donemOzeti(aralik.bas, aralik.bit);
+  const baslik = mod==='hafta' ? 'Bu Hafta' : 'Bu Ay';
+  const altBaslik = `${fmtDay(aralik.bas)} – ${fmtDay(aralik.bit)}`;
+
+  if(o.kaloriliGun===0 && o.sporGun===0 && o.kiloDeg===null){
+    return `<div class="empty" style="padding:40px 20px">${I.empty}<div>${baslik.toLowerCase()} için henüz veri yok.</div></div>`;
+  }
+
+  // Kilo değişimi kartı
+  let kiloKart = '';
+  if(o.kiloDeg!==null){
+    const dustu = o.kiloDeg<0;
+    kiloKart = `<div class="hero">
+      <div class="hero-label">${baslik} kilo değişimi</div>
+      <div class="hero-val" style="color:${dustu?'var(--green)':o.kiloDeg>0?'var(--red)':'var(--txt)'}">${o.kiloDeg>0?'+':''}${o.kiloDeg}<span class="hero-unit"> kg</span></div>
+      <div class="hero-delta ${dustu?'down':'up'}">${o.ilkKilo} → ${o.sonKilo} kg</div>
+    </div>`;
+  } else if(o.sonKilo!==null){
+    kiloKart = `<div class="hero">
+      <div class="hero-label">${baslik} · tek ölçüm</div>
+      <div class="hero-val">${o.sonKilo}<span class="hero-unit"> kg</span></div>
+      <div class="hero-delta" style="background:var(--card2);color:var(--txt2)">Değişim için 2+ ölçüm gerekli</div>
+    </div>`;
+  }
+
+  return `${kiloKart}
+    <div class="card" style="text-align:center">
+      <div class="ctitle" style="justify-content:center">${I.chart} ${baslik} Özeti</div>
+      <div style="font-size:11px;color:var(--txt3);margin-top:-8px;margin-bottom:16px">${altBaslik}</div>
+      <div class="stats" style="margin-bottom:12px">
+        <div class="stat"><div class="stat-label">Ort. Kalori</div><div class="stat-val amber">${o.ortKcal}</div></div>
+        <div class="stat"><div class="stat-label">Spor Günü</div><div class="stat-val green">${o.sporGun}</div></div>
+        <div class="stat"><div class="stat-label">Kayıtlı Gün</div><div class="stat-val">${o.kaloriliGun}/${o.gunSayisi}</div></div>
+      </div>
+      <div class="stats" style="grid-template-columns:repeat(3,1fr)">
+        <div class="stat"><div class="stat-label">Ort. Protein</div><div class="stat-val green">${o.ortP}<span class="u">g</span></div></div>
+        <div class="stat"><div class="stat-label">Ort. Karb</div><div class="stat-val">${o.ortK}<span class="u">g</span></div></div>
+        <div class="stat"><div class="stat-label">Ort. Yağ</div><div class="stat-val amber">${o.ortY}<span class="u">g</span></div></div>
+      </div>
+    </div>
+    ${(o.enYuksek||o.enDusuk)?`<div class="card">
+      <div class="ctitle">${I.chart} Kalori uçları</div>
+      ${o.enYuksek?`<div class="exr"><div class="exr-name">🔺 En kalorili gün</div><div class="exr-badge">${fmtDay(o.enYuksek.tarih)} · ${o.enYuksek.kcal} kcal</div></div>`:''}
+      ${o.enDusuk?`<div class="exr"><div class="exr-name">🔻 En az kalorili gün</div><div class="exr-badge">${fmtDay(o.enDusuk.tarih)} · ${o.enDusuk.kcal} kcal</div></div>`:''}
+    </div>`:''}
+    <div class="yorum" style="margin-top:0">${donemYorum(mod,o)}</div>`;
+}
+
+function donemYorum(mod, o){
+  const sure = mod==='hafta'?'hafta':'ay';
+  const parts = [];
+  if(o.ortKcal>0) parts.push(`Bu ${sure} günlük ortalama ${o.ortKcal} kcal aldın`);
+  if(o.sporGun>0) parts.push(`${o.sporGun} gün spor yaptın`);
+  else parts.push('hiç antrenman kaydın yok');
+  if(o.kiloDeg!==null){
+    if(o.kiloDeg<0) parts.push(`${Math.abs(o.kiloDeg)} kg verdin 💪`);
+    else if(o.kiloDeg>0) parts.push(`${o.kiloDeg} kg aldın`);
+    else parts.push('kilon sabit kaldı');
+  }
+  return parts.join(', ') + '.';
 }
 
 function drawKilo(){
@@ -766,15 +912,37 @@ async function antKaydet(){
 function viewSupp(){
   const rec = cache.supp[selDate];
   const checked = rec && rec.alinanlar ? rec.alinanlar : [];
-  return `<div class="page on"><div class="card"><div class="ctitle">${I.pill} Günlük supplementler</div>
+  const sayi = checked.length;
+  return `<div class="page on"><div class="card">
+    <div class="ctitle">${I.pill} Günlük supplementler <span style="margin-left:auto;font-size:11px;color:var(--txt2);font-weight:500">${sayi}/${SUPPS.length} alındı</span></div>
     <div class="supps">${SUPPS.map(s=>`<div class="supp${checked.includes(s)?' on':''}" data-s="${s}"><div class="scheck">${I.check}</div><div class="sname">${s}</div></div>`).join('')}</div>
+    <button class="asaveb" id="suppSave" style="margin-top:14px">${I.save} Kaydet</button>
   </div></div>`;
 }
-let suppLocal = {};
+
 function bindSupp(){
   document.querySelectorAll('.supp').forEach(el=>{
     el.onclick=()=>{ el.classList.toggle('on'); };
   });
+  const btn = document.getElementById('suppSave');
+  if(btn) btn.onclick = suppKaydet;
+}
+
+async function suppKaydet(){
+  const btn = document.getElementById('suppSave');
+  btn.disabled = true; btn.textContent = 'Kaydediliyor…';
+  const alinanlar = [...document.querySelectorAll('.supp.on')].map(el=>el.dataset.s);
+  try{
+    const { error } = await sb.from('supplementler')
+      .upsert({ tarih:selDate, alinanlar }, { onConflict:'tarih' });
+    if(error) throw error;
+    await fetchData();
+    btn.innerHTML = `${I.check} Kaydedildi!`;
+    setTimeout(()=>render(), 700);
+  }catch(e){
+    btn.disabled=false; btn.innerHTML = `${I.save} Kaydet`;
+    alert('Kayıt hatası: '+(e.message||e));
+  }
 }
 
 let seciliTahlilId = null; // seçili tahlil (yoksa en son)
