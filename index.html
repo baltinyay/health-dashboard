@@ -120,6 +120,15 @@ body{
 .omacro{display:flex;gap:8px;margin-bottom:8px}
 .opill{font-size:11px;padding:3px 9px;border-radius:7px;background:var(--card2);color:var(--txt2);font-weight:600}
 .ofood{font-size:12px;color:var(--txt2);line-height:1.5}
+.ogun-tik{cursor:pointer;transition:.12s}
+.ogun-tik:active{transform:scale(.99)}
+.ogun-ok{color:var(--txt3);font-size:12px}
+.besin-liste{margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.besin-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;font-size:12px}
+.besin-row:not(:last-child){border-bottom:1px solid var(--line)}
+.besin-ad{color:var(--txt);font-weight:500;flex:1;min-width:0}
+.besin-mak{color:var(--txt2);white-space:nowrap;font-size:11px}
+.besin-kcal{color:var(--amber);font-weight:600}
 
 /* ANT */
 .exr{display:flex;justify-content:space-between;align-items:center;padding:13px 0;border-bottom:1px solid var(--line)}
@@ -510,8 +519,8 @@ function render(){
   // böylece hangi güne kayıt/silme yaptığın belli olur.
   document.querySelector('.datestrip').style.display = 'flex';
   if(curTab==='kocu'){ p.innerHTML = viewKocu(); bindChat(); }
-  else if(curTab==='ozet'){ p.innerHTML = viewOzet(); bindOzet(); }
-  else if(curTab==='besl') p.innerHTML = viewBesl();
+  else if(curTab==='ozet'){ p.innerHTML = viewOzet(); bindOzet(); bindOgunKartlari(); }
+  else if(curTab==='besl'){ p.innerHTML = viewBesl(); bindOgunKartlari(); }
   else if(curTab==='ant'){ p.innerHTML = viewAnt(); bindAnt(); }
   else if(curTab==='supp'){ p.innerHTML = viewSupp(); bindSupp(); }
   else if(curTab==='lab'){ p.innerHTML = viewLab(); bindLab(); }
@@ -786,7 +795,7 @@ function viewDonem(mod){
             <div style="display:flex;align-items:center;gap:8px"><span style="font-size:13px;color:var(--amber);font-weight:700">${kg.kcal} kcal</span><span style="color:var(--txt3)">${acik?'▾':'▸'}</span></div>
           </div>
           ${acik?`<div class="spor-gun-detay">
-            ${og.map(o2=>`<div class="ogun"><div class="ohead"><div class="oname">${o2.ogun||'Öğün'}</div><div class="okcal">${o2.kcal||0} kcal</div></div><div class="omacro"><span class="opill">P ${o2.protein||0}g</span><span class="opill">K ${o2.karb||0}g</span><span class="opill">Y ${o2.yag||0}g</span></div>${o2.yiyecekler?`<div class="ofood">${o2.yiyecekler}</div>`:''}</div>`).join('')}
+            ${og.map((o2,i)=>ogunKart(o2, 'ozet-'+selDate+'-'+i)).join('')}
           </div>`:''}
         </div>`;
       }).join('')}
@@ -872,6 +881,34 @@ function drawKilo(){
   });
 }
 
+// Açık öğün kartlarını takip et (besin detayı açık mı)
+let acikOgunler = {};
+function ogunKart(o, key){
+  const besinler = Array.isArray(o.besinler) ? o.besinler : null;
+  const acik = !!acikOgunler[key];
+  const tiklanabilir = besinler && besinler.length;
+  return `<div class="ogun${tiklanabilir?' ogun-tik':''}" ${tiklanabilir?`data-ogun-key="${key}"`:''}>
+    <div class="ohead"><div class="oname">${o.ogun||'Öğün'}${tiklanabilir?` <span class="ogun-ok">${acik?'▾':'▸'}</span>`:''}</div><div class="okcal">${o.kcal||0} kcal</div></div>
+    <div class="omacro"><span class="opill">P ${o.protein||0}g</span><span class="opill">K ${o.karb||0}g</span><span class="opill">Y ${o.yag||0}g</span></div>
+    ${o.yiyecekler?`<div class="ofood">${o.yiyecekler}</div>`:''}
+    ${tiklanabilir && acik ? `<div class="besin-liste">
+      ${besinler.map(b=>`<div class="besin-row">
+        <span class="besin-ad">${b.ad||''}</span>
+        <span class="besin-mak"><span class="besin-kcal">${b.kcal||0} kcal</span> · P${b.protein||0} K${b.karb||0} Y${b.yag||0}</span>
+      </div>`).join('')}
+    </div>`:''}
+  </div>`;
+}
+function bindOgunKartlari(){
+  document.querySelectorAll('.ogun-tik').forEach(el=>{
+    el.onclick = ()=>{
+      const k = el.dataset.ogunKey;
+      acikOgunler[k] = !acikOgunler[k];
+      render();
+    };
+  });
+}
+
 function viewBesl(){
   const og = cache.ogun[selDate]||[];
   const t = totals(selDate);
@@ -931,7 +968,7 @@ function viewBesl(){
       <div class="stat"><div class="stat-label">Yağ</div><div class="stat-val">${t.yag}<span class="u">g</span></div></div>
     </div>
     <div class="card"><div class="ctitle">${I.food} Öğünler</div>
-      ${og.map(o=>`<div class="ogun"><div class="ohead"><div class="oname">${o.ogun||'Öğün'}</div><div class="okcal">${o.kcal||0} kcal</div></div><div class="omacro"><span class="opill">P ${o.protein||0}g</span><span class="opill">K ${o.karb||0}g</span><span class="opill">Y ${o.yag||0}g</span></div>${o.yiyecekler?`<div class="ofood">${o.yiyecekler}</div>`:''}</div>`).join('')}
+      ${og.map((o,i)=>ogunKart(o, 'besl-'+selDate+'-'+i)).join('')}
     </div>
   </div>`;
 }
