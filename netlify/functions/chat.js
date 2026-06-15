@@ -286,27 +286,58 @@ function girisTipi(mesaj) {
 // ================= ÖĞÜN =================
 
 async function ogunKaydet(ctx, mesaj) {
-  const p = mesaj.split("|").map((s) => s.trim());
-  // p[0]=öğün adı, p[1]=yiyecekler, kalan kısımlarda kcal ve makrolar
-  const ogunAdi = p[0] || "Öğün";
-  const yiyecekler = p[1] || mesaj;
-  const kalan = p.slice(2).join(" ");
+  // Mesajı satırlara ayır: ilk satır = öğün başlığı, "-" ile başlayanlar = besinler
+  const satirlar = mesaj.split("\n").map((s) => s.trim()).filter(Boolean);
+  const basSatir = satirlar[0] || mesaj;
+  const besinSatirlari = satirlar.slice(1).filter((s) => /^[-•*]/.test(s));
 
-  const kcal = sayiBul(kalan, /(\d+)\s*kcal/i) ?? sayiBul(mesaj, /(\d+)\s*kcal/i) ?? 0;
-  const protein = sayiBul(kalan, /p\s*[:=]?\s*(\d+)/i) ?? 0;
-  const karb = sayiBul(kalan, /k\s*[:=]?\s*(\d+)/i) ?? 0;
-  const yag = sayiBul(kalan, /y\s*[:=]?\s*(\d+)/i) ?? 0;
+  // Başlık satırını ayrıştır: Öğün | (yiyecekler) | kcal | makro
+  const p = basSatir.split("|").map((s) => s.trim());
+  const ogunAdi = p[0] || "Öğün";
+
+  // Besin satırlarını ayrıştır: "- ad | X kcal | P:.. K:.. Y:.."
+  const besinler = besinSatirlari.map((s) => {
+    const c = s.replace(/^[-•*]\s*/, "").split("|").map((x) => x.trim());
+    const ad = c[0] || "";
+    const kalan = c.slice(1).join(" ");
+    return {
+      ad,
+      kcal: sayiBul(kalan, /(\d+)\s*kcal/i) ?? sayiBul(kalan, /(\d+)/) ?? 0,
+      protein: sayiBul(kalan, /p\s*[:=]?\s*(\d+)/i) ?? 0,
+      karb: sayiBul(kalan, /k\s*[:=]?\s*(\d+)/i) ?? 0,
+      yag: sayiBul(kalan, /y\s*[:=]?\s*(\d+)/i) ?? 0,
+    };
+  }).filter((b) => b.ad);
+
+  // Toplam: başlık satırında varsa oradan, yoksa besinlerden topla
+  let kcal = sayiBul(p.slice(1).join(" "), /(\d+)\s*kcal/i);
+  let protein = sayiBul(p.slice(1).join(" "), /p\s*[:=]?\s*(\d+)/i);
+  let karb = sayiBul(p.slice(1).join(" "), /k\s*[:=]?\s*(\d+)/i);
+  let yag = sayiBul(p.slice(1).join(" "), /y\s*[:=]?\s*(\d+)/i);
+  if (besinler.length) {
+    if (kcal == null) kcal = besinler.reduce((s, b) => s + b.kcal, 0);
+    if (protein == null) protein = besinler.reduce((s, b) => s + b.protein, 0);
+    if (karb == null) karb = besinler.reduce((s, b) => s + b.karb, 0);
+    if (yag == null) yag = besinler.reduce((s, b) => s + b.yag, 0);
+  }
+  kcal = kcal || 0; protein = protein || 0; karb = karb || 0; yag = yag || 0;
+
+  // Yiyecekler metni: besin varsa adlarını birleştir, yoksa başlıktaki 2. alan
+  const yiyecekler = besinler.length
+    ? besinler.map((b) => b.ad).join(", ")
+    : (p[1] || mesaj);
 
   const r = await sbInsert(ctx, "ogunler", {
     tarih: ctx.tarih,
     ogun: ogunAdi,
     yiyecekler,
     kcal, protein, karb, yag,
+    besinler: besinler.length ? besinler : null,
   });
 
   if (r.ok)
     return json({
-      cevap: `✅ ${ogunAdi} kaydedildi (${ctx.tarih})\n${kcal} kcal · P:${protein} K:${karb} Y:${yag}`,
+      cevap: `✅ ${ogunAdi} kaydedildi (${ctx.tarih})\n${kcal} kcal · P:${protein} K:${karb} Y:${yag}${besinler.length ? `\n${besinler.length} besin` : ""}`,
       saved: true,
     });
   return json({ cevap: "⚠️ Kayıt yapılamadı: " + r.error, saved: false });
