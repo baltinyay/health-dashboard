@@ -62,29 +62,94 @@ exports.handler = async function (event) {
     const hedef = hedefKomutu(mesaj, tarih);
     if (hedef) return await hedefGuncelle(ctx, hedef);
 
-    // ---- MARKDOWN RAPOR MU? (Gemini/Claude çıktısı, TOPLAM satırlı) ----
+    // ---- 1) FORMAT (| ile) — en kesin, yiyecekler doğru okunur ----
+    const tip = girisTipi(mesaj);
+    if (tip === "kilo") return await kiloKaydet(ctx, mesaj);
+    if (tip === "antrenman") return await antrenmanKaydet(ctx, mesaj);
+    if (tip === "ogun") return await ogunKaydet(ctx, mesaj);
+
+    // ---- 2) KOD İLE DENE (| yoksa): TOPLAM/değer içeren serbest metin ----
     const rapor = raporParse(mesaj);
     if (rapor) return await ogunKaydetDirekt(ctx, rapor);
 
-    // ---- FORMATLI KAYIT MI? ----
-    const tip = girisTipi(mesaj);
-    if (tip === "ogun") return await ogunKaydet(ctx, mesaj);
-    if (tip === "kilo") return await kiloKaydet(ctx, mesaj);
-    if (tip === "antrenman") return await antrenmanKaydet(ctx, mesaj);
+    // ---- 3) GEMINI İLE ANLA (kod çözemedi ama yemek gibi görünüyor) ----
+    if (yemekGibiMi(mesaj)) {
+      const geminiSonuc = await geminiOgunAnla(mesaj);
+      if (geminiSonuc) return await ogunKaydetDirekt(ctx, geminiSonuc);
+      // Gemini de başarısızsa yönlendirmeye düş
+    }
 
     // ---- HİÇBİRİ DEĞİLSE: YÖNLENDİR ----
     return json({
       cevap:
-        "Şu formatlardan birini yapıştır:\n\n" +
-        "🍽️ Öğün:\nAkşam | 5 köfte, 6 yk makarna | 520 kcal | P:38 K:55 Y:18\n\n" +
-        "⚖️ Kilo:\nKilo | 92.3\n\n" +
-        "💪 Antrenman:\nAntrenman | Göğüs | Bench 80kg 4x8; Fly 15kg 3x12 | Kardiyo: koşu 30dk 300kcal\n\n" +
-        "🗑️ Silmek için: \"bugünkü yediklerimi sil\", \"kiloyu sil\", \"antrenmanı sil\", \"bugünü tamamen sil\"",
+        "Anlayamadım 🤔 Şöyle yazabilirsin:\n\n" +
+        "🍽️ Öğün: \"öğlen 5 köfte, pilav yedim, toplam 600 kalori 32 protein\"\n" +
+        "⚖️ Kilo: \"Kilo | 92.3\"\n" +
+        "💪 Antrenman: \"Antrenman | Göğüs | Bench 80kg 4x8\"\n" +
+        "🗑️ Silme: \"bugünkü yediklerimi sil\"",
     });
   } catch (e) {
     return json({ cevap: "Hata: " + (e.message || String(e)) });
   }
 };
+
+// Mesaj yemek/öğün gibi mi görünüyor? (Gemini'ye sormaya değer mi)
+function yemekGibiMi(mesaj) {
+  const t = temizle(mesaj);
+  // kalori/makro kelimesi VEYA yaygın yemek/eylem kelimeleri varsa
+  if (/kalori|kcal|protein|karbonhidrat|makro/.test(t)) return true;
+  if (/yedim|ictim|kahvalti|oglen|aksam|ara ?ogun|atistir|tukettim/.test(t)) return true;
+  return false;
+}
+
+// Gemini ile serbest metinden öğün makrolarını anla
+async function geminiOgunAnla(mesaj) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+
+  const prompt = `Kullanıcı ne yediğini serbest şekilde yazdı. Toplam kalori ve makroları çıkar. Eğer kullanıcı zaten kalori/makro yazdıysa onları KULLAN, yazmadıysa yaygın porsiyonlara göre TAHMİN et. Öğün adını (kahvaltı/öğlen/akşam/ara öğün) metinden bul, yoksa "Öğün" yaz.
+
+SADECE şu JSON, başka hiçbir şey yazma:
+{"ogun":"Öğlen","yiyecekler":"kısa özet","kcal":600,"protein":32,"karb":61,"yag":26}
+
+Kullanıcı mesajı:
+${mesaj}`;
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 800, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 } },
+        }),
+      }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    let p;
+    try {
+      let tt = raw.trim().replace(/^```json/i, "").replace(/^```/, "").replace(/```$/, "").trim();
+      p = JSON.parse(tt);
+    } catch { return null; }
+    const kcal = Math.round(Number(p.kcal) || 0);
+    if (kcal <= 0) return null;
+    return {
+      ogun: p.ogun || "Öğün",
+      yiyecekler: p.yiyecekler || mesaj.slice(0, 80),
+      kcal,
+      protein: Math.round(Number(p.protein) || 0),
+      karb: Math.round(Number(p.karb) || 0),
+      yag: Math.round(Number(p.yag) || 0),
+    };
+  } catch {
+    return null;
+  }
+}
 
 // ================= MARKDOWN RAPOR =================
 // Gemini/Claude'un ürettiği tablolu raporu anlar. TOPLAM satırından
@@ -124,19 +189,19 @@ function raporParse(mesaj) {
   // En az kalori VEYA bir makro bulunduysa öğün say.
   if (kcal == null && protein == null && karb == null && yag == null) return null;
 
-  // Markdown TOPLAM satırı varsa ondan üzerine yaz (daha güvenilir)
+  // TOPLAM satırı varsa ONDAN AL (en güvenilir, çoklu yemekte toplam doğru olur)
   const toplamSatir = mesaj.split("\n").find((s) => /toplam/i.test(temizle(s)) && /\d/.test(s));
   let fKcal = kcal, fPro = protein, fKarb = karb, fYag = yag;
   if (toplamSatir) {
-    const km = toplamSatir.match(/(\d+)\s*kcal/i);
-    if (km) {
-      fKcal = Number(km[1]);
-      const sonra = toplamSatir.slice(toplamSatir.indexOf(km[0]) + km[0].length);
-      const s2 = (sonra.match(/\d+(?:[.,]\d+)?/g) || []).map((x) => Math.round(Number(x.replace(",", "."))));
-      if (s2[0] != null) fPro = s2[0];
-      if (s2[1] != null) fKarb = s2[1];
-      if (s2[2] != null) fYag = s2[2];
-    }
+    // TOPLAM satırındaki değerleri etiketlerine göre çek (kalori/kcal, protein, karb, yağ)
+    const tKcal = ilkSayi(toplamSatir, [/(\d{3,5})\s*kcal/i, /(\d{3,5})\s*kalori/i, /kalori\s*[:=]?\s*(\d{3,5})/i, /toplam\s*[:=]?\s*(\d{3,5})/i]);
+    const tPro = ilkSayi(toplamSatir, [/protein\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i, /(\d+(?:[.,]\d+)?)\s*g?\s*protein/i]);
+    const tKarb = ilkSayi(toplamSatir, [/karbonhidrat\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i, /(\d+(?:[.,]\d+)?)\s*g?\s*karbonhidrat/i, /karb\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i]);
+    const tYag = ilkSayi(toplamSatir, [/ya[ğg]\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i, /(\d+(?:[.,]\d+)?)\s*g?\s*ya[ğg]/i]);
+    if (tKcal != null) fKcal = tKcal;
+    if (tPro != null) fPro = tPro;
+    if (tKarb != null) fKarb = tKarb;
+    if (tYag != null) fYag = tYag;
   }
 
   return {
