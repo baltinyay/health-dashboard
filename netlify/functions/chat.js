@@ -440,6 +440,7 @@ async function gorselOku(gorselBase64, tip, tarih) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return json({ cevap: "Görsel okuma için GEMINI_API_KEY gerekli." });
   const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const buYil = (tarih && /^\d{4}/.test(tarih)) ? tarih.slice(0, 4) : new Date().getFullYear();
 
   // base64'ten data prefix'i ayıkla
   let veri = gorselBase64;
@@ -449,7 +450,7 @@ async function gorselOku(gorselBase64, tip, tarih) {
 
   const prompt = tip === "tahlil"
     ? `Bu bir kan tahlili sonuç görseli. İçindeki TÜM test parametrelerini oku. Yorum yapma, sadece oku. Her parametre için: ad, değer (sayı+birim), referans aralığı, ve durum (deger referansın altındaysa "lo", üstündeyse "hi", aralıktaysa "ok"). Sadece şu JSON: {"tip":"tahlil","baslik":"Tahlil türü varsa","degerler":[{"ad":"Hemoglobin","deger":"14.2 g/dL","referans":"13-17","durum":"ok"}]}`
-    : `Bu bir akıllı tartı / vücut analizi ekranı görseli (Zepp/Mi Fit gibi). Şu değerleri oku, yorum yapma sadece oku: ağırlık (kg), vücut yağ oranı (%), kas kütlesi (kg), su oranı (%), kemik kütlesi (kg), bazal metabolizma, visseral yağ, vücut yağ. Bulamadığın alanı yazma. Sadece şu JSON: {"tip":"tarti","kilo":0,"yag_orani":0,"kas_kg":0,"su_orani":0,"kemik_kg":0,"metabolik":0,"viseral":0}`;
+    : `Bu bir akıllı tartı / vücut analizi ekranı görseli (Zepp/Mi Fit gibi). Şu değerleri oku, yorum yapma sadece oku: ağırlık (kg), vücut yağ oranı (%), kas kütlesi (kg), su oranı (%), kemik kütlesi (kg), bazal metabolizma, visseral yağ. AYRICA ekranda ölçüm tarihi varsa (örn "8 Haziran 19:51", "08.06.2026") onu YYYY-MM-DD formatında "olcum_tarihi" alanına yaz; yıl belirtilmemişse ${buYil} varsay; tarih yoksa boş bırak. Bulamadığın alanı yazma. Sadece şu JSON: {"tip":"tarti","kilo":0,"yag_orani":0,"kas_kg":0,"su_orani":0,"kemik_kg":0,"metabolik":0,"viseral":0,"olcum_tarihi":""}`;
 
   try {
     const res = await fetch(
@@ -493,10 +494,18 @@ async function gorselOku(gorselBase64, tip, tarih) {
       if (okunan.kas_kg) satir.push(`Kas: ${okunan.kas_kg} kg`);
       if (okunan.su_orani) satir.push(`Su: %${okunan.su_orani}`);
       if (!satir.length) return json({ cevap: "Tartı değerleri okunamadı. Daha net bir görsel dener misin?" });
-      return json({
-        cevap: `⚖️ Tartıdan şunları okudum (${tarih}):\n\n${satir.join("\n")}\n\n✅ Doğruysa "evet" yaz, kaydedeyim. Yanlışsa "hayır" yaz.`,
-        bekleyen: { tip: "tarti", tarih, veri: okunan },
-      });
+      // Görselde ölçüm tarihi varsa onu kullan, yoksa seçili gün
+      let olcumTarih = tarih;
+      if (okunan.olcum_tarihi && /^\d{4}-\d{2}-\d{2}$/.test(okunan.olcum_tarihi)) {
+        olcumTarih = okunan.olcum_tarihi;
+      }
+      return {
+        statusCode: 200, headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cevap: `⚖️ Tartıdan şunları okudum:\n📅 Ölçüm tarihi: ${olcumTarih}\n\n${satir.join("\n")}\n\n✅ Doğruysa "evet" yaz, kaydedeyim. Yanlışsa "hayır" yaz.`,
+          bekleyen: { tip: "tarti", tarih: olcumTarih, veri: okunan },
+        }),
+      };
     }
   } catch (e) {
     return json({ cevap: "Görsel işlenirken hata: " + e.message });
