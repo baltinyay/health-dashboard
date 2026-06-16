@@ -189,15 +189,17 @@ function raporParse(mesaj) {
   // En az kalori VEYA bir makro bulunduysa öğün say.
   if (kcal == null && protein == null && karb == null && yag == null) return null;
 
-  // TOPLAM satırı varsa ONDAN AL (en güvenilir, çoklu yemekte toplam doğru olur)
-  const toplamSatir = mesaj.split("\n").find((s) => /toplam/i.test(temizle(s)) && /\d/.test(s));
+  // TOPLAM varsa ONDAN AL. "toplam" kelimesinin geçtiği yerden SONRASINI al
+  // (tek satırda "...Toplam 950 kcal P:46..." olabilir, ilk besinin 310'unu almasın).
+  let toplamMetin = null;
+  const ti = t.indexOf("toplam");
+  if (ti >= 0) toplamMetin = mesaj.slice(ti); // orijinalden kes (büyük/küçük harf korunur)
   let fKcal = kcal, fPro = protein, fKarb = karb, fYag = yag;
-  if (toplamSatir) {
-    // TOPLAM satırındaki değerleri etiketlerine göre çek (kalori/kcal, protein, karb, yağ)
-    const tKcal = ilkSayi(toplamSatir, [/(\d{3,5})\s*kcal/i, /(\d{3,5})\s*kalori/i, /kalori\s*[:=]?\s*(\d{3,5})/i, /toplam\s*[:=]?\s*(\d{3,5})/i]);
-    const tPro = ilkSayi(toplamSatir, [/protein\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i, /(\d+(?:[.,]\d+)?)\s*g?\s*protein/i]);
-    const tKarb = ilkSayi(toplamSatir, [/karbonhidrat\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i, /(\d+(?:[.,]\d+)?)\s*g?\s*karbonhidrat/i, /karb\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i]);
-    const tYag = ilkSayi(toplamSatir, [/ya[ğg]\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i, /(\d+(?:[.,]\d+)?)\s*g?\s*ya[ğg]/i]);
+  if (toplamMetin) {
+    const tKcal = ilkSayi(toplamMetin, [/(\d{3,5})\s*kcal/i, /(\d{3,5})\s*kalori/i, /kalori\s*[:=]?\s*(\d{3,5})/i, /toplam\s*[:=]?\s*(\d{3,5})/i]);
+    const tPro = ilkSayi(toplamMetin, [/protein\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i, /(\d+(?:[.,]\d+)?)\s*g?\s*protein/i, /\bp\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i]);
+    const tKarb = ilkSayi(toplamMetin, [/karbonhidrat\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i, /(\d+(?:[.,]\d+)?)\s*g?\s*karbonhidrat/i, /\bk\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i]);
+    const tYag = ilkSayi(toplamMetin, [/ya[ğg]\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i, /(\d+(?:[.,]\d+)?)\s*g?\s*ya[ğg]/i, /\by\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i]);
     if (tKcal != null) fKcal = tKcal;
     if (tPro != null) fPro = tPro;
     if (tKarb != null) fKarb = tKarb;
@@ -243,15 +245,23 @@ function baslikYiyecek(mesaj) {
     );
   if (kalin.length) return kalin.join(", ");
 
-  // 2) İlk satır (genelde besin adı): "1,5 Adana Dürüm ve 1 Kola..." 
+  // 2) "Toplam" öncesi metni al, öğün adını ve parantez içi makroları temizle
+  let metin = mesaj;
+  const ti = temizle(mesaj).indexOf("toplam");
+  if (ti > 0) metin = mesaj.slice(0, ti);
+  // parantez içlerini sil: "(310 kcal, P:10 ...)" → ""
+  metin = metin.replace(/\([^)]*\)/g, "");
+  // baştaki öğün adını at
+  metin = metin.replace(/^\s*(kahvalt[ıi]|[öo][ğg]len|[öo][ğg]le|ak[şs]am|ara\s*[öo][ğg][üu]n)\s*/i, "");
+  // gereksiz boşluk/virgül temizliği
+  metin = metin.replace(/\s+/g, " ").replace(/\s*,\s*/g, ", ").replace(/(^[,\s]+|[,\s]+$)/g, "").trim();
+  if (metin && metin.length < 120) return metin;
+
+  // 3) İlk satır (eski mantık)
   const ilkSatir = mesaj.split("\n")[0].trim();
-  // başlık temizle: "Tahmini Besin Değerleri" gibi kuyrukları at
   const temiz = ilkSatir
-    .replace(/tahmini.*$/i, "")
-    .replace(/besin de[ğg]er.*$/i, "")
-    .replace(/makro.*$/i, "")
-    .replace(/[#*]/g, "")
-    .trim();
+    .replace(/tahmini.*$/i, "").replace(/besin de[ğg]er.*$/i, "").replace(/makro.*$/i, "")
+    .replace(/[#*]/g, "").trim();
   if (temiz && temiz.length < 80 && !/^kalori|^protein|^toplam/i.test(temizle(temiz))) return temiz;
 
   return null;
