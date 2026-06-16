@@ -120,6 +120,18 @@ body{
 .omacro{display:flex;gap:8px;margin-bottom:8px}
 .opill{font-size:11px;padding:3px 9px;border-radius:7px;background:var(--card2);color:var(--txt2);font-weight:600}
 .ofood{font-size:12px;color:var(--txt2);line-height:1.5}
+/* ŞİFRE KAPISI */
+.kilit{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px}
+.kilit-box{width:100%;max-width:320px;text-align:center}
+.kilit-logo{width:64px;height:64px;border-radius:18px;background:var(--green);color:#04120C;font-size:32px;font-weight:800;display:flex;align-items:center;justify-content:center;margin:0 auto 20px}
+.kilit-baslik{font-size:28px;font-weight:800;margin-bottom:6px}
+.kilit-baslik span{color:var(--green)}
+.kilit-alt{font-size:13px;color:var(--txt2);margin-bottom:24px}
+.kilit-input{width:100%;background:var(--card);border:1px solid var(--line2);border-radius:13px;padding:15px;color:var(--txt);font-size:18px;text-align:center;letter-spacing:4px;font-family:inherit;margin-bottom:12px;box-sizing:border-box}
+.kilit-input:focus{border-color:var(--green);outline:none}
+.kilit-btn{width:100%;background:var(--green);color:#04120C;border:none;border-radius:13px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit}
+.kilit-btn:active{transform:scale(.98)}
+.kilit-hata{color:var(--red);font-size:13px;margin-top:12px;min-height:18px}
 .ogun-tik{cursor:pointer;transition:.12s}
 .ogun-tik:active{transform:scale(.99)}
 .ogun-ok{color:var(--txt3);font-size:12px}
@@ -294,7 +306,17 @@ body{
 </style>
 </head>
 <body>
-<div class="wrap">
+<div id="kilit" class="kilit">
+  <div class="kilit-box">
+    <div class="kilit-logo">K</div>
+    <div class="kilit-baslik">koç<span>.</span></div>
+    <div class="kilit-alt">Devam etmek için şifre gir</div>
+    <input type="password" id="kilitInput" class="kilit-input" placeholder="Şifre" inputmode="numeric" autocomplete="current-password">
+    <button id="kilitBtn" class="kilit-btn">Giriş</button>
+    <div id="kilitHata" class="kilit-hata"></div>
+  </div>
+</div>
+<div class="wrap" id="wrap" style="display:none">
 
   <div class="head">
     <div class="brand">
@@ -1470,7 +1492,39 @@ async function gonder(){
   scrollChat();
 }
 
-loadAll();
+// ===== ŞİFRE KAPISI =====
+const KOC_SIFRE = "243803.."; // şifreni buradan değiştir
+const KILIT_GUN = 30; // kaç gün hatırlasın
+
+function kilitAc(){
+  document.getElementById('kilit').style.display = 'none';
+  document.getElementById('wrap').style.display = '';
+  loadAll();
+}
+function kilitDene(){
+  const v = document.getElementById('kilitInput').value;
+  if(v === KOC_SIFRE){
+    try{ document.cookie = `koc_giris=1; max-age=${KILIT_GUN*86400}; path=/`; }catch(e){}
+    kilitAc();
+  } else {
+    const h = document.getElementById('kilitHata');
+    h.textContent = 'Yanlış şifre, tekrar dene.';
+    document.getElementById('kilitInput').value = '';
+    document.getElementById('kilitInput').focus();
+  }
+}
+// Daha önce giriş yapılmış mı? (cookie)
+if(document.cookie.split(';').some(c=>c.trim().startsWith('koc_giris=1'))){
+  kilitAc();
+} else {
+  const ki = document.getElementById('kilitInput');
+  const kb = document.getElementById('kilitBtn');
+  if(kb) kb.onclick = kilitDene;
+  if(ki){
+    ki.addEventListener('keydown', e=>{ if(e.key==='Enter') kilitDene(); });
+    setTimeout(()=>ki.focus(), 300);
+  }
+}
 </script>
 </body>
 </html>
