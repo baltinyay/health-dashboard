@@ -246,24 +246,29 @@ function baslikYiyecek(mesaj) {
     );
   if (kalin.length) return kalin.join(", ");
 
-  // 2) "Toplam" öncesi metni al, öğün adını ve parantez içi makroları temizle
-  let metin = mesaj;
+  // 2) "Toplam" öncesi kısmı al
+  let ust = mesaj;
   const ti = temizle(mesaj).indexOf("toplam");
-  if (ti > 0) metin = mesaj.slice(0, ti);
-  // parantez içlerini sil: "(310 kcal, P:10 ...)" → ""
-  metin = metin.replace(/\([^)]*\)/g, "");
-  // baştaki öğün adını at
-  metin = metin.replace(/^\s*(kahvalt[ıi]|[öo][ğg]len|[öo][ğg]le|ak[şs]am|ara\s*[öo][ğg][üu]n)\s*/i, "");
-  // gereksiz boşluk/virgül temizliği
-  metin = metin.replace(/\s+/g, " ").replace(/\s*,\s*/g, ", ").replace(/(^[,\s]+|[,\s]+$)/g, "").trim();
-  if (metin && metin.length < 120) return metin;
+  if (ti > 0) ust = mesaj.slice(0, ti);
 
-  // 3) İlk satır (eski mantık)
-  const ilkSatir = mesaj.split("\n")[0].trim();
-  const temiz = ilkSatir
-    .replace(/tahmini.*$/i, "").replace(/besin de[ğg]er.*$/i, "").replace(/makro.*$/i, "")
-    .replace(/[#*]/g, "").trim();
-  if (temiz && temiz.length < 80 && !/^kalori|^protein|^toplam/i.test(temizle(temiz))) return temiz;
+  // Çok satırlıysa: her satır bir besin → adları topla
+  const satirlar = ust.split("\n").map((s) => s.trim()).filter(Boolean);
+  if (satirlar.length > 1) {
+    const adlar = satirlar.map((s) => {
+      // "Karışık Pizza (1 büyük dilim): ~400 kcal" → "Karışık Pizza (1 büyük dilim)"
+      let ad = s.replace(/[-•*]\s*/, "");
+      ad = ad.split(/[:：]/)[0]; // ilk iki noktadan önce (kalori kısmını at)
+      ad = ad.replace(/~?\d+\s*kcal.*/i, "").replace(/[#*]/g, "").trim();
+      return ad;
+    }).filter((a) => a && a.length < 60 && !/^(kalori|protein|karbonhidrat|ya[ğg]|toplam)/i.test(temizle(a)));
+    if (adlar.length) return adlar.join(", ");
+  }
+
+  // 3) Tek satır: parantez içi makroları temizle
+  let metin = ust.replace(/\([^)]*\d+\s*kcal[^)]*\)/gi, "").replace(/\([^)]*[pky]\s*[:=][^)]*\)/gi, "");
+  metin = metin.replace(/^\s*(kahvalt[ıi]|[öo][ğg]len|[öo][ğg]le|ak[şs]am|ara\s*[öo][ğg][üu]n)\s*/i, "");
+  metin = metin.replace(/~?\d+\s*kcal/gi, "").replace(/\s+/g, " ").replace(/\s*,\s*/g, ", ").replace(/(^[,\s]+|[,\s:]+$)/g, "").trim();
+  if (metin && metin.length < 120) return metin;
 
   return null;
 }
