@@ -196,10 +196,11 @@ function raporParse(mesaj) {
   if (ti >= 0) toplamMetin = mesaj.slice(ti); // orijinalden kes (büyük/küçük harf korunur)
   let fKcal = kcal, fPro = protein, fKarb = karb, fYag = yag;
   if (toplamMetin) {
-    const tKcal = ilkSayi(toplamMetin, [/(\d{3,5})\s*kcal/i, /(\d{3,5})\s*kalori/i, /kalori\s*[:=]?\s*(\d{3,5})/i, /toplam\s*[:=]?\s*(\d{3,5})/i]);
-    const tPro = ilkSayi(toplamMetin, [/protein\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i, /(\d+(?:[.,]\d+)?)\s*g?\s*protein/i, /\bp\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i]);
-    const tKarb = ilkSayi(toplamMetin, [/karbonhidrat\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i, /(\d+(?:[.,]\d+)?)\s*g?\s*karbonhidrat/i, /\bk\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i]);
-    const tYag = ilkSayi(toplamMetin, [/ya[ğg]\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i, /(\d+(?:[.,]\d+)?)\s*g?\s*ya[ğg]/i, /\by\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i]);
+    const tKcal = ilkSayi(toplamMetin, [/(\d{3,5})\s*kcal/i, /kalori\s*[:=]?\s*(\d{3,5})/i, /(\d{3,5})\s*kalori/i, /toplam\s*[:=]?\s*(\d{3,5})/i]);
+    // Makrolar: "Protein (P): 29 gr", "P:29", "29 g protein" — hepsini yakala
+    const tPro = ilkSayi(toplamMetin, [/protein[^:=\d]*[:=]\s*(\d+(?:[.,]\d+)?)/i, /(\d+(?:[.,]\d+)?)\s*g?r?\s*protein/i, /\bp\s*[:=]\s*(\d+(?:[.,]\d+)?)/i, /\(p\)\s*[:=]\s*(\d+(?:[.,]\d+)?)/i]);
+    const tKarb = ilkSayi(toplamMetin, [/karbonhidrat[^:=\d]*[:=]\s*(\d+(?:[.,]\d+)?)/i, /(\d+(?:[.,]\d+)?)\s*g?r?\s*karbonhidrat/i, /\bkarb[^:=\d]*[:=]\s*(\d+(?:[.,]\d+)?)/i, /\bk\s*[:=]\s*(\d+(?:[.,]\d+)?)/i, /\(k\)\s*[:=]\s*(\d+(?:[.,]\d+)?)/i]);
+    const tYag = ilkSayi(toplamMetin, [/ya[ğg][^:=\d]*[:=]\s*(\d+(?:[.,]\d+)?)/i, /(\d+(?:[.,]\d+)?)\s*g?r?\s*ya[ğg]/i, /\by\s*[:=]\s*(\d+(?:[.,]\d+)?)/i, /\(y\)\s*[:=]\s*(\d+(?:[.,]\d+)?)/i]);
     if (tKcal != null) fKcal = tKcal;
     if (tPro != null) fPro = tPro;
     if (tKarb != null) fKarb = tKarb;
