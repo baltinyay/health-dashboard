@@ -54,6 +54,11 @@ exports.handler = async function (event) {
     const onay = onayKomutu(mesaj, body.bekleyen);
     if (onay) return await onayliKaydet(ctx, onay);
 
+    // TEŞHİS: "evet" yazıldı ama bekleyen yoksa, bunu kullanıcıya bildir
+    if (/^(evet|onayla|tamam|olur|dogru)$/i.test(temizle(mesaj).trim())) {
+      return json({ cevap: `⚠️ Onaylanacak bir şey bulamadım (bekleyen=${body.bekleyen ? "var ama tanınmadı" : "boş"}). Öğünü tekrar yapıştırıp önce onay mesajını görmen, sonra 'evet' yazman gerekiyor.` });
+    }
+
     // ---- SİLME KOMUTU MU? ----
     const silme = silmeKomutu(mesaj, tarih);
     if (silme) return await silmeYap(ctx, silme, mesaj);
