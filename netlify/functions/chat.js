@@ -274,18 +274,23 @@ function baslikYiyecek(mesaj) {
 }
 
 async function ogunKaydetDirekt(ctx, r) {
-  const res = await sbInsert(ctx, "ogunler", {
-    tarih: ctx.tarih,
+  return ogunOnaySun(ctx, {
     ogun: r.ogun,
     yiyecekler: r.yiyecekler,
     kcal: r.kcal, protein: r.protein, karb: r.karb, yag: r.yag,
+    besinler: null,
   });
-  if (res.ok)
-    return json({
-      cevap: `✅ ${r.ogun} kaydedildi (${ctx.tarih})\n${r.kcal} kcal · P:${r.protein} K:${r.karb} Y:${r.yag}\n${r.yiyecekler}`,
-      saved: true,
-    });
-  return json({ cevap: "⚠️ Kayıt yapılamadı: " + res.error, saved: false });
+}
+
+// Öğünü kaydetmeden önce onaya sun
+function ogunOnaySun(ctx, veri) {
+  const besinSatiri = (veri.besinler && veri.besinler.length)
+    ? "\n" + veri.besinler.map((b) => `• ${b.ad}: ${b.kcal} kcal`).join("\n")
+    : "";
+  return json({
+    cevap: `🍽️ ${veri.ogun} — ${ctx.tarih}\n${veri.yiyecekler}\n\n${veri.kcal} kcal · P:${veri.protein} K:${veri.karb} Y:${veri.yag}${besinSatiri}\n\n✅ Kaydetmek için "evet", iptal için "hayır".`,
+    bekleyen: { tip: "ogun", tarih: ctx.tarih, veri },
+  });
 }
 
 // ================= TİP TESPİTİ =================
@@ -343,20 +348,12 @@ async function ogunKaydet(ctx, mesaj) {
     ? besinler.map((b) => b.ad).join(", ")
     : (p[1] || mesaj);
 
-  const r = await sbInsert(ctx, "ogunler", {
-    tarih: ctx.tarih,
+  return ogunOnaySun(ctx, {
     ogun: ogunAdi,
     yiyecekler,
     kcal, protein, karb, yag,
     besinler: besinler.length ? besinler : null,
   });
-
-  if (r.ok)
-    return json({
-      cevap: `✅ ${ogunAdi} kaydedildi (${ctx.tarih})\n${kcal} kcal · P:${protein} K:${karb} Y:${yag}${besinler.length ? `\n${besinler.length} besin` : ""}`,
-      saved: true,
-    });
-  return json({ cevap: "⚠️ Kayıt yapılamadı: " + r.error, saved: false });
 }
 
 // ================= KİLO =================
@@ -661,10 +658,20 @@ async function onayliKaydet(ctx, bekleyen) {
     if (r.ok) return json({ cevap: `✅ Tahlil kaydedildi (${tarih}): ${(v.degerler || []).length} parametre`, saved: true });
     return json({ cevap: "⚠️ Kayıt yapılamadı: " + r.error });
   }
+  if (bekleyen.tip === "ogun") {
+    const v = bekleyen.veri;
+    const r = await sbInsert({ ...ctx, tarih }, "ogunler", {
+      tarih,
+      ogun: v.ogun || "Öğün",
+      yiyecekler: v.yiyecekler || "",
+      kcal: v.kcal || 0, protein: v.protein || 0, karb: v.karb || 0, yag: v.yag || 0,
+      besinler: v.besinler && v.besinler.length ? v.besinler : null,
+    });
+    if (r.ok) return json({ cevap: `✅ ${v.ogun} kaydedildi (${tarih})\n${v.kcal} kcal · P:${v.protein} K:${v.karb} Y:${v.yag}`, saved: true });
+    return json({ cevap: "⚠️ Kayıt yapılamadı: " + r.error });
+  }
   return json({ cevap: "Onaylanacak bir şey yok." });
 }
-
-// ================= KALORİ HEDEFİ =================
 // "almam gereken kaloriyi 2000'e çıkar", "kalorimi 1900'e düşür",
 // "hedefi 2200 yap", "1 temmuzdan itibaren 2000" gibi cümleleri anlar.
 
@@ -787,6 +794,27 @@ async function silmeYap(ctx, silme, mesaj) {
 
   if (silme.ne === "hepsi" || silme.ne === "ogun") {
     let path = `ogunler?tarih=eq.${ctx.tarih}`;
+    // Öğün adı belirtilmediyse ve "tamamen/hepsi" denmediyse: belirsiz, sorma
+    if (silme.ne === "ogun" && !silme.ogun) {
+      // O günkü öğünleri çek, kaç tane var bak
+      const liste = await sbSelect(ctx, `ogunler?tarih=eq.${ctx.tarih}&select=ogun`);
+      const ogunler = (liste.data || []).map((x) => x.ogun);
+      if (ogunler.length === 0) {
+        return json({ cevap: "Bugün silinecek öğün yok." });
+      }
+      if (ogunler.length === 1) {
+        // Tek öğün varsa direkt sil
+        path += `&ogun=eq.${encodeURIComponent(ogunler[0])}`;
+        const r = await sbDelete(ctx, path);
+        if (r.ok) return json({ cevap: `🗑️ ${ogunler[0]} öğünü silindi (${ctx.tarih}).`, saved: true });
+        return json({ cevap: "⚠️ Silme yapılamadı: " + r.error });
+      }
+      // Birden fazla öğün var: hangisi olduğunu sor
+      const benzersiz = [...new Set(ogunler)];
+      return json({
+        cevap: `Bugün ${benzersiz.length} öğün var: ${benzersiz.join(", ")}.\n\nHangisini sileyim? Örn. "${benzersiz[0].toLowerCase()} öğününü sil"\nHepsini silmek için: "bugünü tamamen sil"`,
+      });
+    }
     if (silme.ne === "ogun" && silme.ogun) path += `&ogun=eq.${encodeURIComponent(silme.ogun)}`;
     const r = await sbDelete(ctx, path);
     if (r.ok) yapilanlar.push(silme.ogun ? `${silme.ogun} öğünü` : "öğünler");
@@ -840,6 +868,10 @@ async function sbUpsert(ctx, table, payload, conflictCol) {
 
 async function sbDelete(ctx, path) {
   return sbReq(ctx, path, { method: "DELETE", headers: { Prefer: "return=minimal" } });
+}
+
+async function sbSelect(ctx, path) {
+  return sbReq(ctx, path, { method: "GET" });
 }
 
 // ================= YARDIMCI =================
