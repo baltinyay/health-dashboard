@@ -293,7 +293,7 @@ function ogunOnaySun(ctx, veri) {
     ? "\n" + veri.besinler.map((b) => `• ${b.ad}: ${b.kcal} kcal`).join("\n")
     : "";
   return json({
-    cevap: `🍽️ ${veri.ogun} — ${ctx.tarih}\n${veri.yiyecekler}\n\n${veri.kcal} kcal · P:${veri.protein} K:${veri.karb} Y:${veri.yag}${besinSatiri}\n\n✅ Kaydetmek için "evet", iptal için "hayır".`,
+    cevap: `🍽️ ${veri.ogun} — ${ctx.tarih}\n${veri.yiyecekler}\n\n${veri.kcal} kcal · P:${veri.protein} K:${veri.karb} Y:${veri.yag}${besinSatiri}\n\n✅ Kaydetmek için "evet", iptal için "hayır". [v2]`,
     bekleyen: { tip: "ogun", tarih: ctx.tarih, veri },
   });
 }
