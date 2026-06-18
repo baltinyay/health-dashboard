@@ -120,6 +120,8 @@ body{
 .omacro{display:flex;gap:8px;margin-bottom:8px}
 .opill{font-size:11px;padding:3px 9px;border-radius:7px;background:var(--card2);color:var(--txt2);font-weight:600}
 .ofood{font-size:12px;color:var(--txt2);line-height:1.5}
+.supp-ozet{display:flex;flex-wrap:wrap;gap:7px}
+.supp-tag{background:var(--green-bg);color:var(--green);font-size:12px;font-weight:600;padding:5px 11px;border-radius:8px}
 /* ŞİFRE KAPISI */
 .kilit{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px}
 .kilit-box{width:100%;max-width:320px;text-align:center}
@@ -703,6 +705,16 @@ function viewOzet(){
     ${sonOlcum&&sonOlcum.kas_kg?`<div class="stats"><div class="stat"><div class="stat-label">Kas kütlesi</div><div class="stat-val">${sonOlcum.kas_kg}<span class="u">kg</span></div></div><div class="stat"><div class="stat-label">Su oranı</div><div class="stat-val">%${sonOlcum.su_orani||'—'}</div></div><div class="stat"><div class="stat-label">Yağ oranı</div><div class="stat-val">%${sonOlcum.yag_orani||'—'}</div></div></div>`:''}
     ${ozetAntrenman()}
     ${ozetOgunler()}
+    ${ozetSupplement()}
+  </div>`;
+}
+
+function ozetSupplement(){
+  const rec = cache.supp[selDate];
+  const alinanlar = rec && Array.isArray(rec.alinanlar) ? rec.alinanlar : [];
+  if(!alinanlar.length) return '';
+  return `<div class="card"><div class="ctitle">${I.pill} Supplementler <span style="margin-left:auto;font-size:11px;color:var(--txt2);font-weight:500">${alinanlar.length} alındı</span></div>
+    <div class="supp-ozet">${alinanlar.map(s=>`<span class="supp-tag">${s}</span>`).join('')}</div>
   </div>`;
 }
 
@@ -1494,7 +1506,7 @@ async function gonder(){
 }
 
 // ===== ŞİFRE KAPISI =====
-const KOC_SIFRE = "243803"; // şifreni buradan değiştir
+const KOC_SIFRE = "1791"; // şifreni buradan değiştir
 const KILIT_GUN = 30; // kaç gün hatırlasın
 
 function kilitAc(){
