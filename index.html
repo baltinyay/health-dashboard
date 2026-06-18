@@ -490,7 +490,7 @@ function fmtSub(ds){ const dt=new Date(ds); return `${DAYNAMES[dt.getDay()]} · 
 
 function updHeader(){
   const h = new Date().getHours();
-  document.getElementById('greet').textContent = (h<12?'Günaydın':h<18?'İyi günler':'İyi akşamlar') + ' · v2';
+  document.getElementById('greet').textContent = h<12?'Günaydın':h<18?'İyi günler':'İyi akşamlar';
   document.getElementById('dDay').textContent = fmtDay(selDate);
   document.getElementById('dSub').textContent = fmtSub(selDate);
   const o = cache.olcum[selDate], a = cache.ant[selDate];
@@ -1479,7 +1479,7 @@ async function gonder(){
     if(data.cevap){
       cevap = data.cevap;
       if(data.saved){ bekleyenOnay = null; await fetchData(); }
-      else if(data.bekleyen){ bekleyenOnay = data.bekleyen; console.log('BEKLEYEN SET:', bekleyenOnay); }
+      else if(data.bekleyen){ bekleyenOnay = data.bekleyen; }
     } else {
       cevap = 'Hata detayı: ' + JSON.stringify(data.detay || data.error || data).slice(0, 500);
     }
@@ -1494,7 +1494,7 @@ async function gonder(){
 }
 
 // ===== ŞİFRE KAPISI =====
-const KOC_SIFRE = "243803"; // şifreni buradan değiştir
+const KOC_SIFRE = "1791"; // şifreni buradan değiştir
 const KILIT_GUN = 30; // kaç gün hatırlasın
 
 function kilitAc(){
