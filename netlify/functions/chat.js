@@ -62,6 +62,10 @@ exports.handler = async function (event) {
     const hedef = hedefKomutu(mesaj, tarih);
     if (hedef) return await hedefGuncelle(ctx, hedef);
 
+    // ---- SUPPLEMENT EKLEME Mİ? ("whey aldım", "kreatin omega aldım") ----
+    const supp = supplementKomutu(mesaj);
+    if (supp) return await supplementKaydet(ctx, supp);
+
     // ---- 1) FORMAT (| ile) — en kesin, yiyecekler doğru okunur ----
     const tip = girisTipi(mesaj);
     if (tip === "kilo") return await kiloKaydet(ctx, mesaj);
@@ -626,6 +630,49 @@ async function gorselOku(gorselBase64, tip, tarih) {
   } catch (e) {
     return json({ cevap: "Görsel işlenirken hata: " + e.message });
   }
+}
+
+// ================= SUPPLEMENT =================
+const SUPP_LISTE = ["Whey", "Kreatin", "Omega 3", "D Vitamini", "K Vitamini", "NMN", "Coenzyme Q10", "C Vitamini", "B12", "Magnezyum", "Çinko", "Bromelain", "Resveratrol"];
+
+// "whey aldım", "kreatin ve omega aldım", "bugün magnezyum çinko aldım"
+function supplementKomutu(mesaj) {
+  const t = temizle(mesaj);
+  // "aldım/içtim/aldim" gibi bir fiil VEYA supplement kelimesi geçmeli
+  const fiilVar = /\bald[iı]m\b|ictim|aldim|kullandim|attim/.test(t);
+  // Hangi supplementler geçiyor?
+  const bulunan = [];
+  for (const s of SUPP_LISTE) {
+    const st = temizle(s);
+    // ana kelime eşleşmesi (whey, kreatin, omega, magnezyum...)
+    const anahtar = st.split(" ")[0]; // "omega 3" → "omega", "d vitamini" → "d"
+    if (st.length >= 3 && t.includes(st)) { bulunan.push(s); continue; }
+    if (anahtar.length >= 4 && t.includes(anahtar)) { bulunan.push(s); continue; }
+  }
+  // Özel kısaltmalar
+  if (/\bd vit|d vitamin|\bd3\b/.test(t) && !bulunan.includes("D Vitamini")) bulunan.push("D Vitamini");
+  if (/\bk vit|k vitamin|\bk2\b/.test(t) && !bulunan.includes("K Vitamini")) bulunan.push("K Vitamini");
+  if (/\bc vit|c vitamin/.test(t) && !bulunan.includes("C Vitamini")) bulunan.push("C Vitamini");
+  if (/\bq10\b|coq10|koenzim/.test(t) && !bulunan.includes("Coenzyme Q10")) bulunan.push("Coenzyme Q10");
+  if (/\bb12\b/.test(t) && !bulunan.includes("B12")) bulunan.push("B12");
+
+  if (!bulunan.length) return null;
+  // Sadece supplement adı geçti ama fiil yoksa yine de say (örn "whey kreatin omega")
+  // ama yemek/öğün kelimesi varsa sayma (çakışmasın)
+  if (/yedim|ogun|kahvalti|oglen|aksam|kcal|kalori|protein|karbonhidrat/.test(t) && !fiilVar) return null;
+  return [...new Set(bulunan)];
+}
+
+async function supplementKaydet(ctx, alinanlar) {
+  // Mevcut günün kaydını al, üstüne ekle (varsa birleştir)
+  const mevcut = await sbSelect(ctx, `supplementler?tarih=eq.${ctx.tarih}&select=alinanlar`);
+  let liste = alinanlar;
+  if (mevcut.ok && mevcut.data && mevcut.data[0] && Array.isArray(mevcut.data[0].alinanlar)) {
+    liste = [...new Set([...mevcut.data[0].alinanlar, ...alinanlar])];
+  }
+  const r = await sbUpsert(ctx, "supplementler", { tarih: ctx.tarih, alinanlar: liste }, "tarih");
+  if (r.ok) return json({ cevap: `💊 Supplement kaydedildi (${ctx.tarih}):\n${liste.join(", ")}`, saved: true });
+  return json({ cevap: "⚠️ Kayıt yapılamadı: " + r.error });
 }
 
 function onayKomutu(mesaj, bekleyen) {
