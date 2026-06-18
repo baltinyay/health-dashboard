@@ -296,11 +296,18 @@ function ogunOnaySun(ctx, veri) {
 // ================= TİP TESPİTİ =================
 
 function girisTipi(mesaj) {
-  const ilk = mesaj.split("|")[0].trim().toLowerCase();
-  if (/^kilo/.test(ilk)) return "kilo";
-  if (/^antren|^antrenman/.test(ilk)) return "antrenman";
-  // İçinde | varsa ve kcal/makro geçiyorsa öğün say
-  if (mesaj.includes("|")) return "ogun";
+  const ilk = mesaj.split("\n")[0].trim(); // sadece ilk satıra bak
+  const ilkLower = ilk.toLowerCase();
+  if (/^kilo\s*\|/.test(ilkLower)) return "kilo";
+  if (/^antren/.test(ilkLower)) return "antrenman";
+  // Öğün formatı: ilk satır "Öğün adı | ... | ... " ŞEKLİNDE olmalı.
+  // Besinlerin içindeki "|" (120g Karb | 25g Pro) format SAYILMAZ.
+  // Kural: ilk satır | içermeli VE ilk parça kısa bir öğün adı olmalı (kcal/sayı içermemeli).
+  if (ilk.includes("|")) {
+    const ilkParca = ilk.split("|")[0].trim();
+    // ilk parça "16 Adet Sushi: ~800 kcal (120g Karb" gibi uzun/kcal'li değilse öğün formatı say
+    if (ilkParca.length <= 25 && !/kcal|kalori|\d{3,}/i.test(ilkParca)) return "ogun";
+  }
   return "bilinmiyor";
 }
 
