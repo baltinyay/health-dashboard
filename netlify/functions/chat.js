@@ -62,10 +62,6 @@ exports.handler = async function (event) {
     const hedef = hedefKomutu(mesaj, tarih);
     if (hedef) return await hedefGuncelle(ctx, hedef);
 
-    // ---- SUPPLEMENT EKLEME Mİ? ("whey aldım", "kreatin omega aldım") ----
-    const supp = supplementKomutu(mesaj);
-    if (supp) return await supplementKaydet(ctx, supp);
-
     // ---- 1) FORMAT (| ile) — en kesin, yiyecekler doğru okunur ----
     const tip = girisTipi(mesaj);
     if (tip === "kilo") return await kiloKaydet(ctx, mesaj);
@@ -222,9 +218,16 @@ function raporParse(mesaj) {
 }
 
 // Verilen kalıplardan ilk eşleşeni döndürür (sayı veya null)
+// Binlik ayracı temizle: "2.610"→"2610", "1.200"→"1200" ama "92.3"/"1,5" ondalık kalır
+function binlikTemizle(mesaj) {
+  // nokta veya virgülden sonra TAM 3 hane gelip ardından hane gelmiyorsa = binlik ayraç
+  return String(mesaj).replace(/(\d{1,3})[.,](\d{3})(?!\d)/g, "$1$2");
+}
+
 function ilkSayi(mesaj, kaliplar) {
+  const m2 = binlikTemizle(mesaj);
   for (const re of kaliplar) {
-    const m = mesaj.match(re);
+    const m = m2.match(re);
     if (m) return Math.round(Number(m[1].replace(",", ".")));
   }
   return null;
@@ -239,6 +242,18 @@ function ogunTespit(t) {
 }
 
 function baslikYiyecek(mesaj) {
+  // 0) "... Öğün (içindekiler) ..." — başlıktaki parantezde yiyecek varsa onu al
+  //    örn "Toplam Öğün (300 Gram Tavuk + 140 Gram Lavaş) Besin Değerleri:"
+  const ilkSatir = mesaj.split("\n")[0];
+  const parMatch = ilkSatir.match(/\(([^)]+)\)/);
+  if (parMatch) {
+    const ic = parMatch[1].trim();
+    // parantez içi yiyecek mi? (kcal/makro değilse ve harf içeriyorsa)
+    if (!/kcal|kalori|\bp\s*[:=]|protein|karbonhidrat/i.test(ic) && /[a-zçğıöşü]/i.test(ic) && ic.length < 80) {
+      return ic.replace(/\s*\+\s*/g, ", "); // "tavuk + lavaş" → "tavuk, lavaş"
+    }
+  }
+
   // 1) Markdown **kalın** isimler
   const kalin = [...mesaj.matchAll(/\*\*(.+?)\*\*/g)]
     .map((m) => m[1].trim())
@@ -632,49 +647,6 @@ async function gorselOku(gorselBase64, tip, tarih) {
   }
 }
 
-// ================= SUPPLEMENT =================
-const SUPP_LISTE = ["Whey", "Kreatin", "Omega 3", "D Vitamini", "K Vitamini", "NMN", "Coenzyme Q10", "C Vitamini", "B12", "Magnezyum", "Çinko", "Bromelain", "Resveratrol"];
-
-// "whey aldım", "kreatin ve omega aldım", "bugün magnezyum çinko aldım"
-function supplementKomutu(mesaj) {
-  const t = temizle(mesaj);
-  // "aldım/içtim/aldim" gibi bir fiil VEYA supplement kelimesi geçmeli
-  const fiilVar = /\bald[iı]m\b|ictim|aldim|kullandim|attim/.test(t);
-  // Hangi supplementler geçiyor?
-  const bulunan = [];
-  for (const s of SUPP_LISTE) {
-    const st = temizle(s);
-    // ana kelime eşleşmesi (whey, kreatin, omega, magnezyum...)
-    const anahtar = st.split(" ")[0]; // "omega 3" → "omega", "d vitamini" → "d"
-    if (st.length >= 3 && t.includes(st)) { bulunan.push(s); continue; }
-    if (anahtar.length >= 4 && t.includes(anahtar)) { bulunan.push(s); continue; }
-  }
-  // Özel kısaltmalar
-  if (/\bd vit|d vitamin|\bd3\b/.test(t) && !bulunan.includes("D Vitamini")) bulunan.push("D Vitamini");
-  if (/\bk vit|k vitamin|\bk2\b/.test(t) && !bulunan.includes("K Vitamini")) bulunan.push("K Vitamini");
-  if (/\bc vit|c vitamin/.test(t) && !bulunan.includes("C Vitamini")) bulunan.push("C Vitamini");
-  if (/\bq10\b|coq10|koenzim/.test(t) && !bulunan.includes("Coenzyme Q10")) bulunan.push("Coenzyme Q10");
-  if (/\bb12\b/.test(t) && !bulunan.includes("B12")) bulunan.push("B12");
-
-  if (!bulunan.length) return null;
-  // Sadece supplement adı geçti ama fiil yoksa yine de say (örn "whey kreatin omega")
-  // ama yemek/öğün kelimesi varsa sayma (çakışmasın)
-  if (/yedim|ogun|kahvalti|oglen|aksam|kcal|kalori|protein|karbonhidrat/.test(t) && !fiilVar) return null;
-  return [...new Set(bulunan)];
-}
-
-async function supplementKaydet(ctx, alinanlar) {
-  // Mevcut günün kaydını al, üstüne ekle (varsa birleştir)
-  const mevcut = await sbSelect(ctx, `supplementler?tarih=eq.${ctx.tarih}&select=alinanlar`);
-  let liste = alinanlar;
-  if (mevcut.ok && mevcut.data && mevcut.data[0] && Array.isArray(mevcut.data[0].alinanlar)) {
-    liste = [...new Set([...mevcut.data[0].alinanlar, ...alinanlar])];
-  }
-  const r = await sbUpsert(ctx, "supplementler", { tarih: ctx.tarih, alinanlar: liste }, "tarih");
-  if (r.ok) return json({ cevap: `💊 Supplement kaydedildi (${ctx.tarih}):\n${liste.join(", ")}`, saved: true });
-  return json({ cevap: "⚠️ Kayıt yapılamadı: " + r.error });
-}
-
 function onayKomutu(mesaj, bekleyen) {
   if (!bekleyen) return null;
   const t = temizle(mesaj);
@@ -935,7 +907,7 @@ function json(p) {
 }
 function bugun() { return new Date().toISOString().slice(0, 10); }
 function num(v, float) { const n = Number(String(v).replace(",", ".")) || 0; return float ? Math.round(n * 10) / 10 : Math.round(n); }
-function sayiBul(s, re) { const m = String(s).match(re); return m ? Math.round(Number(m[1])) : null; }
+function sayiBul(s, re) { const m = binlikTemizle(String(s)).match(re); return m ? Math.round(Number(m[1])) : null; }
 function floatBul(s, re) { const m = String(s).match(re); return m ? Math.round(Number(String(m[1]).replace(",", ".")) * 10) / 10 : null; }
 function temizle(s) {
   return String(s || "").toLowerCase()
