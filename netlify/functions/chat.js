@@ -207,6 +207,28 @@ function raporParse(mesaj) {
     if (tYag != null) fYag = tYag;
   }
 
+  // BESİN SATIRLARINI AYRIŞTIR (her satır: "ad: kcal | Xg Karb | Yg Protein | Zg Yağ")
+  // Toplam satırı hariç, kcal içeren satırları besin say.
+  const besinler = [];
+  const tumSatirlar = mesaj.split("\n").map((s) => s.trim()).filter(Boolean);
+  for (const satir of tumSatirlar) {
+    const st = temizle(satir);
+    if (/^[\s*•-]*(toplam|genel\s*toplam)/i.test(satir.trim())) continue; // toplam satırını atla
+    if (!/kcal|kalori/i.test(st)) continue; // kalori yoksa besin değil
+    // ad: ilk ":" veya kcal'den önceki kısım
+    let ad = satir.replace(/^[\s*•-]+/, "");
+    // "ad: 300 kcal..." → ad = ":"den önce; ":" yoksa kcal'den önce
+    if (ad.includes(":")) ad = ad.split(":")[0].trim();
+    else ad = ad.replace(/\s*~?\d+\s*kcal.*/i, "").trim();
+    if (!ad || ad.length > 60) continue;
+    const sonra = satir; // değerleri tüm satırdan çek
+    const bKcal = ilkSayi(sonra, [/(\d+(?:[.,]\d+)?)\s*kcal/i, /(\d+(?:[.,]\d+)?)\s*kalori/i]) || 0;
+    const bPro = ilkSayi(sonra, [/(\d+(?:[.,]\d+)?)\s*g?r?\s*protein/i, /protein[^:=\d]*[:=]\s*(\d+(?:[.,]\d+)?)/i, /\bp\s*[:=]\s*(\d+(?:[.,]\d+)?)/i]) || 0;
+    const bKarb = ilkSayi(sonra, [/(\d+(?:[.,]\d+)?)\s*g?r?\s*karb/i, /karbonhidrat[^:=\d]*[:=]\s*(\d+(?:[.,]\d+)?)/i, /\bk\s*[:=]\s*(\d+(?:[.,]\d+)?)/i]) || 0;
+    const bYag = ilkSayi(sonra, [/(\d+(?:[.,]\d+)?)\s*g?r?\s*ya[ğg]/i, /ya[ğg][^:=\d]*[:=]\s*(\d+(?:[.,]\d+)?)/i, /\by\s*[:=]\s*(\d+(?:[.,]\d+)?)/i]) || 0;
+    if (bKcal > 0) besinler.push({ ad, kcal: bKcal, protein: bPro, karb: bKarb, yag: bYag });
+  }
+
   return {
     ogun: ogunTespit(t),
     yiyecekler: baslikYiyecek(mesaj) || "Çeşitli besinler",
@@ -214,6 +236,7 @@ function raporParse(mesaj) {
     protein: fPro || 0,
     karb: fKarb || 0,
     yag: fYag || 0,
+    besinler: besinler.length >= 2 ? besinler : null,
   };
 }
 
@@ -302,14 +325,14 @@ async function ogunKaydetDirekt(ctx, r) {
     ogun: r.ogun,
     yiyecekler: r.yiyecekler,
     kcal: r.kcal, protein: r.protein, karb: r.karb, yag: r.yag,
-    besinler: null,
+    besinler: r.besinler || null,
   });
 }
 
 // Öğünü kaydetmeden önce onaya sun
 function ogunOnaySun(ctx, veri) {
   const besinSatiri = (veri.besinler && veri.besinler.length)
-    ? "\n" + veri.besinler.map((b) => `• ${b.ad}: ${b.kcal} kcal`).join("\n")
+    ? "\n\nBesinler:\n" + veri.besinler.map((b) => `• ${b.ad}: ${b.kcal} kcal (P${b.protein} K${b.karb} Y${b.yag})`).join("\n")
     : "";
   return json({
     cevap: `🍽️ ${veri.ogun} — ${ctx.tarih}\n${veri.yiyecekler}\n\n${veri.kcal} kcal · P:${veri.protein} K:${veri.karb} Y:${veri.yag}${besinSatiri}\n\n✅ Kaydetmek için "evet", iptal için "hayır".`,
