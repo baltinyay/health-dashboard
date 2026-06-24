@@ -199,7 +199,7 @@ function raporParse(mesaj) {
     const tKcal = ilkSayi(toplamMetin, [/(\d{3,5})\s*kcal/i, /kalori\s*[:=]?\s*(\d{3,5})/i, /(\d{3,5})\s*kalori/i, /toplam\s*[:=]?\s*(\d{3,5})/i]);
     // Makrolar: "Protein (P): 29 gr", "P:29", "29 g protein" — hepsini yakala
     const tPro = ilkSayi(toplamMetin, [/protein[^:=\d]*[:=]\s*(\d+(?:[.,]\d+)?)/i, /(\d+(?:[.,]\d+)?)\s*g?r?\s*protein/i, /\bp\s*[:=]\s*(\d+(?:[.,]\d+)?)/i, /\(p\)\s*[:=]\s*(\d+(?:[.,]\d+)?)/i]);
-    const tKarb = ilkSayi(toplamMetin, [/karbonhidrat[^:=\d]*[:=]\s*(\d+(?:[.,]\d+)?)/i, /(\d+(?:[.,]\d+)?)\s*g?r?\s*karbonhidrat/i, /\bkarb[^:=\d]*[:=]\s*(\d+(?:[.,]\d+)?)/i, /\bk\s*[:=]\s*(\d+(?:[.,]\d+)?)/i, /\(k\)\s*[:=]\s*(\d+(?:[.,]\d+)?)/i]);
+    const tKarb = ilkSayi(toplamMetin, [/karbonhidrat[^:=\d]*[:=]\s*(\d+(?:[.,]\d+)?)/i, /(\d+(?:[.,]\d+)?)\s*g?r?\s*karbonhidrat/i, /(\d+(?:[.,]\d+)?)\s*g?r?\s*karb\b/i, /\bkarb[^:=\d]*[:=]\s*(\d+(?:[.,]\d+)?)/i, /\bk\s*[:=]\s*(\d+(?:[.,]\d+)?)/i, /\(k\)\s*[:=]\s*(\d+(?:[.,]\d+)?)/i]);
     const tYag = ilkSayi(toplamMetin, [/ya[ğg][^:=\d]*[:=]\s*(\d+(?:[.,]\d+)?)/i, /(\d+(?:[.,]\d+)?)\s*g?r?\s*ya[ğg]/i, /\by\s*[:=]\s*(\d+(?:[.,]\d+)?)/i, /\(y\)\s*[:=]\s*(\d+(?:[.,]\d+)?)/i]);
     if (tKcal != null) fKcal = tKcal;
     if (tPro != null) fPro = tPro;
@@ -242,15 +242,20 @@ function ogunTespit(t) {
 }
 
 function baslikYiyecek(mesaj) {
-  // 0) "... Öğün (içindekiler) ..." — başlıktaki parantezde yiyecek varsa onu al
-  //    örn "Toplam Öğün (300 Gram Tavuk + 140 Gram Lavaş) Besin Değerleri:"
-  const ilkSatir = mesaj.split("\n")[0];
-  const parMatch = ilkSatir.match(/\(([^)]+)\)/);
-  if (parMatch) {
-    const ic = parMatch[1].trim();
-    // parantez içi yiyecek mi? (kcal/makro değilse ve harf içeriyorsa)
-    if (!/kcal|kalori|\bp\s*[:=]|protein|karbonhidrat/i.test(ic) && /[a-zçğıöşü]/i.test(ic) && ic.length < 80) {
-      return ic.replace(/\s*\+\s*/g, ", "); // "tavuk + lavaş" → "tavuk, lavaş"
+  // 0) "Toplam Öğün (içindekiler)" / "Öğün (içindekiler)" — başlık satırı
+  //    bir öğün başlığıysa ve parantez yiyecek içeriyorsa al.
+  //    (besin satırındaki parantez "Tavuk (Beşamel Soslu)" açıklamadır, ona güvenme)
+  {
+    const ilkSatir = mesaj.split("\n")[0];
+    const basligMi = /^[\s*•-]*(toplam\s+)?[öo][ğg][üu]n\s*\(/i.test(ilkSatir.trim());
+    if (basligMi) {
+      const parMatch = ilkSatir.match(/\(([^)]+)\)/);
+      if (parMatch) {
+        const ic = parMatch[1].trim();
+        if (!/kcal|kalori|\bp\s*[:=]|protein|karbonhidrat/i.test(temizle(ic)) && /[a-zçğıöşü]/i.test(ic) && ic.length < 80) {
+          return ic.replace(/\s*\+\s*/g, ", ");
+        }
+      }
     }
   }
 
