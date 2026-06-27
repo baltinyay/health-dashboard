@@ -733,6 +733,16 @@ function hedefKomutu(mesaj, varsayilanTarih) {
   const t = temizle(mesaj);
   // Yemek bildirimi ise (yedim/içtim) kesinlikle hedef değil
   if (/yedim|ictim|tukettim|atistirdim/.test(t)) return null;
+
+  // ÖĞÜN GİBİ GÖRÜNÜYORSA hedef değildir (besin satırı/makro listesi/öğün adı/toplam)
+  const ogunIsareti =
+    /^[\s*•-]/m.test(mesaj) ||                    // "-" veya "*" ile başlayan satır (besin listesi)
+    /\bp\s*[:=]\s*\d/i.test(t) ||                 // "P:24" gibi makro
+    /protein|karbonhidrat|\bkarb\b/i.test(t) ||   // makro kelimeleri
+    /kahvalti|oglen|aksam|ara ?ogun/i.test(t) ||  // öğün adı
+    /toplam/i.test(t);                            // "TOPLAM" satırı
+  if (ogunIsareti) return null;
+
   // "kalori" veya "hedef" + bir sayı + değiştirme fiili geçmeli
   if (!/kalori|kcal|hedef/.test(t)) return null;
   if (!/cikar|cikart|dusur|yap|guncelle|ayarla|olsun|ol\b|yukselt|indir|degistir|ayarl/.test(t)) return null;
