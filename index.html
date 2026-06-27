@@ -442,7 +442,12 @@ function kasGruplari(){
 function gununHedefi(ds){
   const uygun = cache.hedefler
     .filter(h => h.baslangic_tarih <= ds)
-    .sort((a,b)=> b.baslangic_tarih.localeCompare(a.baslangic_tarih));
+    .sort((a,b)=> {
+      // önce tarihe göre (yeni tarih önce), aynı tarihte id'ye göre (büyük id = en son eklenen)
+      const t = b.baslangic_tarih.localeCompare(a.baslangic_tarih);
+      if(t !== 0) return t;
+      return (b.id||0) - (a.id||0);
+    });
   return uygun.length ? uygun[0].kalori : 1800; // varsayılan 1800
 }
 
