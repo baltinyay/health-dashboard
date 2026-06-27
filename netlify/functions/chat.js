@@ -786,6 +786,8 @@ function tarihBul(mesaj, refTarih) {
 }
 
 async function hedefGuncelle(ctx, hedef) {
+  // Aynı başlangıç tarihinde eski hedef varsa sil (üzerine yaz)
+  await sbDelete(ctx, `hedefler?baslangic_tarih=eq.${hedef.baslangic}`);
   const r = await sbInsert(ctx, "hedefler", {
     baslangic_tarih: hedef.baslangic,
     kalori: hedef.kalori,
