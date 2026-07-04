@@ -10,12 +10,18 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
-  --bg:#0B0E11; --bg2:#13181D; --card:#161C22; --card2:#1C242B;
-  --line:#222B33; --line2:#2C3740;
-  --txt:#E8EDF1; --txt2:#8B97A3; --txt3:#5A6570;
+  /* Zemin: saf siyah yerine çok hafif mavi-yeşil alt ton (daha sıcak, daha az "ölü") */
+  --bg:#0C1014; --bg2:#12181E; --card:#171E25; --card2:#1D262E;
+  --line:#242F39; --line2:#31404C;
+  /* Metinler: bir tık aydınlık — güneşte telefonda okunur */
+  --txt:#EFF3F6; --txt2:#A3AFBB; --txt3:#75818D;
   --green:#2BD89A; --green-d:#1D9E75; --green-bg:rgba(43,216,154,.12);
   --blue:#4DA8FF; --amber:#F5B544; --coral:#FF7A59; --red:#FF5C5C;
   --radius:18px; --radius-sm:12px;
+  --on-green:#04120C;
+  /* Derinlik: hero'da hafif yeşilimsi ışıma, kartlarda üstten aydınlık */
+  --hero-grad:linear-gradient(155deg, #1B2621 0%, #161E24 45%, #141B21 100%);
+  --card-grad:linear-gradient(180deg, #1A222A 0%, #171E25 100%);
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 body{
@@ -29,7 +35,7 @@ body{
 /* HEADER */
 .head{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
 .brand{display:flex;align-items:center;gap:10px}
-.brand-dot{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--green),var(--green-d));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:#04120C}
+.brand-dot{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--green),var(--green-d));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:var(--on-green)}
 .brand-name{font-size:17px;font-weight:700;letter-spacing:-.3px}
 .brand-name span{color:var(--green)}
 .head-greet{font-size:12px;color:var(--txt2);margin-top:1px}
@@ -65,7 +71,7 @@ body{
 .tabs{display:flex;gap:6px;margin-bottom:20px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
 .tabs::-webkit-scrollbar{display:none}
 .tab{padding:9px 16px;border-radius:12px;background:var(--card);border:1px solid var(--line);color:var(--txt2);font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;transition:.18s;flex-shrink:0;display:flex;align-items:center;gap:6px}
-.tab.on{background:var(--green);border-color:var(--green);color:#04120C}
+.tab.on{background:var(--green);border-color:var(--green);color:var(--on-green);box-shadow:0 4px 16px rgba(43,216,154,.25)}
 .tab svg{width:15px;height:15px}
 
 /* PAGES */
@@ -74,7 +80,8 @@ body{
 @keyframes slideup{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 
 /* HERO METRIC */
-.hero{background:linear-gradient(135deg,var(--card),var(--card2));border:1px solid var(--line);border-radius:var(--radius);padding:22px;margin-bottom:14px;position:relative;overflow:hidden}
+.hero{background:var(--hero-grad);border:1px solid var(--line);border-radius:var(--radius);padding:22px;margin-bottom:14px;position:relative;overflow:hidden}
+.hero::after{content:'';position:absolute;top:-40%;right:-15%;width:60%;height:120%;background:radial-gradient(ellipse, rgba(43,216,154,.07) 0%, transparent 65%);pointer-events:none}
 .hero::before{content:'';position:absolute;top:-40%;right:-10%;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle,var(--green-bg),transparent 70%)}
 .hero-label{font-size:12px;color:var(--txt2);margin-bottom:6px;position:relative}
 .hero-val{font-size:46px;font-weight:800;letter-spacing:-2px;line-height:1;position:relative}
@@ -85,14 +92,14 @@ body{
 
 /* STAT GRID */
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
-.stat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px}
+.stat{background:var(--card-grad);border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px}
 .stat-label{font-size:11px;color:var(--txt2);margin-bottom:5px}
 .stat-val{font-size:21px;font-weight:700;letter-spacing:-.5px}
 .stat-val .u{font-size:12px;color:var(--txt2);font-weight:500}
 .stat-val.green{color:var(--green)}.stat-val.amber{color:var(--amber)}
 
 /* CARD */
-.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:14px}
+.card{background:var(--card-grad);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:14px}
 .ctitle{font-size:13px;font-weight:700;color:var(--txt);margin-bottom:16px;display:flex;align-items:center;gap:8px;letter-spacing:-.2px}
 .ctitle svg{width:16px;height:16px;color:var(--green)}
 
@@ -125,13 +132,13 @@ body{
 /* ŞİFRE KAPISI */
 .kilit{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px}
 .kilit-box{width:100%;max-width:320px;text-align:center}
-.kilit-logo{width:64px;height:64px;border-radius:18px;background:var(--green);color:#04120C;font-size:32px;font-weight:800;display:flex;align-items:center;justify-content:center;margin:0 auto 20px}
+.kilit-logo{width:64px;height:64px;border-radius:18px;background:var(--green);color:var(--on-green);font-size:32px;font-weight:800;display:flex;align-items:center;justify-content:center;margin:0 auto 20px}
 .kilit-baslik{font-size:28px;font-weight:800;margin-bottom:6px}
 .kilit-baslik span{color:var(--green)}
 .kilit-alt{font-size:13px;color:var(--txt2);margin-bottom:24px}
 .kilit-input{width:100%;background:var(--card);border:1px solid var(--line2);border-radius:13px;padding:15px;color:var(--txt);font-size:18px;text-align:center;letter-spacing:4px;font-family:inherit;margin-bottom:12px;box-sizing:border-box}
 .kilit-input:focus{border-color:var(--green);outline:none}
-.kilit-btn{width:100%;background:var(--green);color:#04120C;border:none;border-radius:13px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit}
+.kilit-btn{width:100%;background:var(--green);color:var(--on-green);border:none;border-radius:13px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit}
 .kilit-btn:active{transform:scale(.98)}
 .kilit-hata{color:var(--red);font-size:13px;margin-top:12px;min-height:18px}
 .ogun-tik{cursor:pointer;transition:.12s}
@@ -163,7 +170,7 @@ body{
 .supp.on{background:var(--green-bg);border-color:var(--green)}
 .scheck{width:22px;height:22px;border-radius:7px;border:2px solid var(--line2);flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:.16s}
 .supp.on .scheck{background:var(--green);border-color:var(--green)}
-.scheck svg{width:13px;height:13px;color:#04120C;opacity:0;transition:.16s}
+.scheck svg{width:13px;height:13px;color:var(--on-green);opacity:0;transition:.16s}
 .supp.on .scheck svg{opacity:1}
 .sname{font-size:13px;font-weight:600}
 
@@ -188,7 +195,7 @@ body{
 .chat-msgs{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:4px 2px 16px;scrollbar-width:thin}
 .msg{max-width:82%;padding:12px 15px;border-radius:16px;font-size:14px;line-height:1.55;white-space:pre-wrap;word-wrap:break-word;animation:msgin .3s cubic-bezier(.2,.8,.2,1)}
 @keyframes msgin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-.msg.user{align-self:flex-end;background:var(--green);color:#04120C;border-bottom-right-radius:5px;font-weight:500}
+.msg.user{align-self:flex-end;background:var(--green);color:var(--on-green);border-bottom-right-radius:5px;font-weight:500}
 .msg.koc{align-self:flex-start;background:var(--card);border:1px solid var(--line);color:var(--txt);border-bottom-left-radius:5px}
 .msg.typing{align-self:flex-start;background:var(--card);border:1px solid var(--line);border-bottom-left-radius:5px;display:flex;gap:5px;padding:15px}
 .msg.typing span{width:7px;height:7px;border-radius:50%;background:var(--txt3);animation:blink 1.2s infinite}
@@ -207,7 +214,7 @@ body{
 .chat-input{display:flex;gap:9px;align-items:flex-end;padding-top:12px;border-top:1px solid var(--line)}
 .chat-input textarea{flex:1;background:var(--card);border:1px solid var(--line);border-radius:13px;padding:12px 14px;color:var(--txt);font-size:14px;font-family:inherit;resize:none;max-height:120px;line-height:1.4;outline:none;transition:.15s}
 .chat-input textarea:focus{border-color:var(--green)}
-.chat-send{width:44px;height:44px;border-radius:13px;background:var(--green);border:none;color:#04120C;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.15s}
+.chat-send{width:44px;height:44px;border-radius:13px;background:var(--green);border:none;color:var(--on-green);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.15s}
 .chat-send:active{transform:scale(.92)}
 .chat-send:disabled{opacity:.4;cursor:not-allowed}
 .chat-send svg{width:19px;height:19px}
@@ -232,7 +239,7 @@ body{
 .asetbox input{background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px;color:var(--txt);font-size:15px;font-weight:600;text-align:center;width:100%;font-family:inherit}
 .asetbox input:focus{border-color:var(--green);outline:none}
 .asetbox input.dolu{border-color:var(--green-d)}
-.asaveb{width:100%;background:var(--green);color:#04120C;border:none;border-radius:var(--radius-sm);padding:15px;font-size:15px;font-weight:700;cursor:pointer;margin-top:6px;display:flex;align-items:center;justify-content:center;gap:8px;transition:.15s}
+.asaveb{width:100%;background:var(--green);color:var(--on-green);border:none;border-radius:var(--radius-sm);padding:15px;font-size:15px;font-weight:700;cursor:pointer;margin-top:6px;display:flex;align-items:center;justify-content:center;gap:8px;transition:.15s;box-shadow:0 4px 14px rgba(43,216,154,.2)}
 .asaveb:active{transform:scale(.98)}
 .asaveb:disabled{opacity:.5}
 .asaveb svg{width:18px;height:18px}
@@ -240,7 +247,7 @@ body{
 .atip-input:focus{border-color:var(--green);outline:none}
 .ant-ust{display:flex;gap:8px;align-items:stretch;margin-bottom:12px}
 .ant-duzen-btn{flex-shrink:0;background:var(--card);border:1px solid var(--line);color:var(--txt2);border-radius:var(--radius-sm);padding:0 16px;font-size:15px;font-weight:600;cursor:pointer;transition:.15s}
-.ant-duzen-btn.on{background:var(--green);color:#04120C;border-color:var(--green)}
+.ant-duzen-btn.on{background:var(--green);color:var(--on-green);border-color:var(--green)}
 .ant-duzen-btn:active{transform:scale(.95)}
 .aex-duzen{display:flex;align-items:center;justify-content:space-between;padding:12px 8px;border-top:1px solid var(--line)}
 .hareket-sil{background:rgba(255,92,92,.12);border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:14px}
@@ -293,7 +300,7 @@ body{
 .ozet-mod{display:flex;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:13px;padding:4px;margin-bottom:14px}
 .ozet-mod-btn{flex:1;text-align:center;padding:9px;border-radius:10px;font-size:13px;font-weight:600;color:var(--txt2);cursor:pointer;transition:.15s}
 .ozet-mod-btn:active{transform:scale(.97)}
-.ozet-mod-btn.on{background:var(--green);color:#04120C}
+.ozet-mod-btn.on{background:var(--green);color:var(--on-green)}
 .spor-gun-stat{cursor:pointer;transition:.15s}
 .spor-gun-stat:active{transform:scale(.96)}
 .spor-gun-stat.aktif{border:1px solid var(--green)}
@@ -915,10 +922,10 @@ function drawKilo(){
     data:{ labels:data.map(r=>{const[,m,d]=r.tarih.split('-');return d+'/'+m;}),
       datasets:[{data:vals,borderColor:'#2BD89A',borderWidth:2.5,tension:.4,fill:true,
         backgroundColor:(c)=>{const g=c.chart.ctx.createLinearGradient(0,0,0,230);g.addColorStop(0,'rgba(43,216,154,.25)');g.addColorStop(1,'rgba(43,216,154,0)');return g;},
-        pointBackgroundColor:'#2BD89A',pointBorderColor:'#0B0E11',pointBorderWidth:2,pointRadius:5,pointHoverRadius:7}]},
+        pointBackgroundColor:'#2BD89A',pointBorderColor:'#0C1014',pointBorderWidth:2,pointRadius:5,pointHoverRadius:7}]},
     options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:18}},
       plugins:{legend:{display:false},tooltip:{enabled:false}},
-      scales:{y:{min:mn,max:mx,ticks:{color:'#5A6570',font:{size:11},callback:v=>v+' kg'},grid:{color:'rgba(255,255,255,.04)'}},x:{ticks:{color:'#5A6570',font:{size:11}},grid:{display:false}}}},
+      scales:{y:{min:mn,max:mx,ticks:{color:'#75818D',font:{size:11},callback:v=>v+' kg'},grid:{color:'rgba(255,255,255,.04)'}},x:{ticks:{color:'#75818D',font:{size:11}},grid:{display:false}}}},
     plugins:[etiketPlugin]
   });
 }
@@ -1461,7 +1468,7 @@ function fotoTipSec(){
     ov.innerHTML=`<div style="background:var(--card2);border:1px solid var(--line2);border-radius:18px;padding:22px;max-width:300px;width:100%">
       <div style="font-size:15px;font-weight:700;margin-bottom:6px;color:var(--txt)">Ne yüklüyorsun?</div>
       <div style="font-size:12px;color:var(--txt2);margin-bottom:16px">Fotoğraftaki veri türünü seç</div>
-      <button id="ftTarti" style="width:100%;background:var(--green);color:#04120C;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px">⚖️ Tartı / Vücut Analizi</button>
+      <button id="ftTarti" style="width:100%;background:var(--green);color:var(--on-green);border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px">⚖️ Tartı / Vücut Analizi</button>
       <button id="ftTahlil" style="width:100%;background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px">🩸 Kan Tahlili</button>
       <button id="ftIptal" style="width:100%;background:transparent;color:var(--txt2);border:none;border-radius:12px;padding:10px;font-size:13px;cursor:pointer">İptal</button>
     </div>`;
