@@ -117,7 +117,7 @@ Kullanıcı mesajı:
 ${mesaj}`;
 
   try {
-    const res = await fetch(
+    const res = await fetchTimeout(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
       {
         method: "POST",
@@ -489,7 +489,7 @@ async function egzersizAdlariniDuzelt(egzersizler) {
 
   const prompt = `Aşağıdaki fitness hareket isimlerini standart, doğru yazımlarına çevir (Türkçe veya İngilizce yaygın isimle). Sadece JSON dizi döndür, başka hiçbir şey yazma. Örnek giriş: ["chst press","incln dmbl","lat puldown"] → ["Chest Press","Incline Dumbbell Press","Lat Pulldown"].\n\nGiriş: ${JSON.stringify(adlar)}`;
 
-  const res = await fetch(
+  const res = await fetchTimeout(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
     {
       method: "POST",
@@ -545,7 +545,7 @@ Tahlil metni:
 ${kisaMetin}`;
 
   try {
-    const res = await fetch(
+    const res = await fetchTimeout(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
       {
         method: "POST",
@@ -593,7 +593,8 @@ ${kisaMetin}`;
 
     return json({ cevap: ozet, bekleyen: { tip: "tahlil", tarih: tahlilTarih, veri: okunan } });
   } catch (e) {
-    return json({ cevap: "Tahlil işlenirken hata: " + e.message });
+    const m = e.name === "AbortError" ? "Gemini yanıt vermedi (zaman aşımı). Tekrar dener misin?" : ("Tahlil işlenirken hata: " + e.message);
+    return json({ cevap: m });
   }
 }
 
@@ -616,7 +617,7 @@ async function gorselOku(gorselBase64, tip, tarih) {
     : `Bu bir akıllı tartı / vücut analizi ekranı görseli (Zepp/Mi Fit gibi). Şu değerleri oku, yorum yapma sadece oku: ağırlık (kg), vücut yağ oranı (%), kas kütlesi (kg), su oranı (%), kemik kütlesi (kg), bazal metabolizma, visseral yağ. AYRICA ekranda ölçüm tarihi varsa (örn "8 Haziran 19:51", "08.06.2026") onu YYYY-MM-DD formatında "olcum_tarihi" alanına yaz; yıl belirtilmemişse ${buYil} varsay; tarih yoksa boş bırak. Bulamadığın alanı yazma. Sadece şu JSON: {"tip":"tarti","kilo":0,"yag_orani":0,"kas_kg":0,"su_orani":0,"kemik_kg":0,"metabolik":0,"viseral":0,"olcum_tarihi":""}`;
 
   try {
-    const res = await fetch(
+    const res = await fetchTimeout(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
       {
         method: "POST",
@@ -671,7 +672,8 @@ async function gorselOku(gorselBase64, tip, tarih) {
       };
     }
   } catch (e) {
-    return json({ cevap: "Görsel işlenirken hata: " + e.message });
+    const m = e.name === "AbortError" ? "Gemini yanıt vermedi (zaman aşımı). Tekrar dener misin?" : ("Görsel işlenirken hata: " + e.message);
+    return json({ cevap: m });
   }
 }
 
@@ -684,7 +686,8 @@ function onayKomutu(mesaj, bekleyen) {
 }
 
 async function onayliKaydet(ctx, bekleyen) {
-  if (bekleyen.iptal) return json({ cevap: "İptal edildi, kaydetmedim. İstersen tekrar fotoğraf yükle." });
+  // İptal: bekleyen onayı temizle (saved:true index'te bekleyenOnay'ı sıfırlar)
+  if (bekleyen.iptal) return json({ cevap: "İptal edildi, kaydetmedim.", saved: true });
   const tarih = bekleyen.tarih || ctx.tarih;
   if (bekleyen.tip === "tarti") {
     const v = bekleyen.veri;
@@ -941,6 +944,17 @@ async function sbSelect(ctx, path) {
 }
 
 // ================= YARDIMCI =================
+
+// Timeout korumalı fetch (Gemini takılırsa 8sn'de keser, düzgün hata verir)
+async function fetchTimeout(url, options = {}, ms = 8000) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), ms);
+  try {
+    return await fetch(url, { ...options, signal: ac.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function json(p) {
   return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) };
