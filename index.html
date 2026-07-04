@@ -473,6 +473,9 @@ async function fetchData(){
     cache.hareketler = hareketler.data || [];
   }catch(e){
     console.error(e);
+    // Veri çekilemedi — kullanıcıya görünür uyarı
+    const p = document.getElementById('pages');
+    if(p && !cache.loaded) p.innerHTML = '<div class="empty" style="padding:40px 20px">⚠️<div>Veriler yüklenemedi. İnternetini kontrol edip sayfayı yenile.</div></div>';
   }
   cache.loaded = true;
 }
