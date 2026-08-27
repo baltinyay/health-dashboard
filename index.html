@@ -1147,7 +1147,8 @@ async function antKaydet(){
   const btn = document.getElementById('antSave');
   btn.disabled = true; btn.textContent = 'Kaydediliyor…';
 
-  const tip = document.getElementById('antTip').value.trim() || 'Antrenman';
+  const tipManuel = document.getElementById('antTip').value.trim();
+
   const toplam = {};
   document.querySelectorAll('.asetbox input').forEach(inp=>{
     const h = inp.dataset.h, f = inp.dataset.f, v = inp.value.trim().replace(',','.');
@@ -1155,6 +1156,23 @@ async function antKaydet(){
     toplam[h] = toplam[h] || { ad:h };
     toplam[h][f] = f==='kg' ? parseFloat(v) : parseInt(v,10);
   });
+
+  // Antrenman adı: kullanıcı yazdıysa o; boşsa dolu hareketlerin kas gruplarından üret
+  let tip = tipManuel;
+  if(!tip){
+    const doluHareketler = Object.keys(toplam);
+    const gruplar = [...new Set(doluHareketler.map(h=>{
+      const kayit = cache.hareketler.find(x=>x.hareket===h);
+      return kayit ? kayit.kas_grubu : null;
+    }).filter(Boolean))];
+    // GRUP_SIRA sırasına göre diz (Göğüs→Triceps→Sırt→Biceps→Omuz→Bacak, yeni gruplar sona)
+    gruplar.sort((a,b)=>{
+      let ia=GRUP_SIRA.indexOf(a), ib=GRUP_SIRA.indexOf(b);
+      if(ia<0) ia=999; if(ib<0) ib=999;
+      return ia-ib;
+    });
+    tip = gruplar.length ? gruplar.join(' - ') : 'Antrenman';
+  }
   const egzersizler = Object.values(toplam).map(e=>{
     const parca = [];
     if(e.kg!=null && !isNaN(e.kg)) parca.push(e.kg+'kg');
@@ -1384,7 +1402,7 @@ async function pdfGonder(file){
   }
 
   try{
-    const res = await fetch('/.netlify/functions/chat', {
+    const res = await fetchZamanAsimli('/.netlify/functions/chat', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ pdf_metin: metin, tarih: selDate }),
@@ -1394,11 +1412,23 @@ async function pdfGonder(file){
     chatGecmis.push({rol:'koc', metin:data.cevap||'Tahlil okunamadı.'});
     if(data.bekleyen) bekleyenOnay = data.bekleyen;
   }catch(e){
-    chatGecmis.push({rol:'koc', metin:'Bağlantı hatası: '+e.message});
+    const m = e.name==='AbortError' ? 'Yanıt gelmedi (zaman aşımı). Tekrar dener misin?' : ('Bağlantı hatası: '+e.message);
+    chatGecmis.push({rol:'koc', metin:m});
   }
   document.getElementById('fotoInput').value='';
   document.getElementById('chatMsgs').innerHTML = chatGecmis.map(m=>`<div class="msg ${m.rol==='kullanici'?'user':'koc'}">${escapeHtml(m.metin)}</div>`).join('');
   scrollChat();
+}
+
+// İstek zaman aşımı korumalı fetch (takılırsa ekran "..." kalmasın)
+async function fetchZamanAsimli(url, options={}, ms=45000){
+  const ac = new AbortController();
+  const t = setTimeout(()=>ac.abort(), ms);
+  try{
+    return await fetch(url, { ...options, signal: ac.signal });
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 async function fotoGonder(file){
@@ -1408,7 +1438,7 @@ async function fotoGonder(file){
   // Görseli küçült (büyük mobil fotoğraflar "load failed"e yol açıyor)
   let base64;
   try{
-    base64 = await kucultGorsel(file, 1280, 0.8);
+    base64 = await kucultGorsel(file, 1100, 0.72);
   }catch(e){
     // küçültme başarısızsa orijinali kullan
     base64 = await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); });
@@ -1421,7 +1451,7 @@ async function fotoGonder(file){
   scrollChat();
 
   try{
-    const res = await fetch('/.netlify/functions/chat', {
+    const res = await fetchZamanAsimli('/.netlify/functions/chat', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ gorsel: base64, gorsel_tip: tip, tarih: selDate }),
@@ -1431,7 +1461,10 @@ async function fotoGonder(file){
     chatGecmis.push({rol:'koc', metin:data.cevap||'Görsel okunamadı.'});
     if(data.bekleyen) bekleyenOnay = data.bekleyen;
   }catch(e){
-    chatGecmis.push({rol:'koc', metin:'Bağlantı hatası: '+e.message+'\n\nFotoğraf çok büyük olabilir, daha küçük/net bir görsel dene.'});
+    const m = e.name==='AbortError'
+      ? 'Yanıt gelmedi (zaman aşımı). Tekrar dene; sürerse fotoğrafı kırpıp sadece değerlerin olduğu kısmı yükle.'
+      : 'Bağlantı hatası: '+e.message+'\n\nFotoğraf çok büyük olabilir, daha küçük/net bir görsel dene.';
+    chatGecmis.push({rol:'koc', metin:m});
   }
   document.getElementById('fotoInput').value='';
   document.getElementById('chatMsgs').innerHTML = chatGecmis.map(m=>`<div class="msg ${m.rol==='kullanici'?'user':'koc'}">${escapeHtml(m.metin)}</div>`).join('');
@@ -1496,7 +1529,7 @@ async function gonder(){
   scrollChat();
 
   try{
-    const res = await fetch('/.netlify/functions/chat', {
+    const res = await fetchZamanAsimli('/.netlify/functions/chat', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ mesaj:text, tarih: selDate, gecmis: chatGecmis.slice(0,-1), bekleyen: bekleyenOnay }),
@@ -1512,7 +1545,8 @@ async function gonder(){
     }
     chatGecmis.push({rol:'koc', metin:cevap});
   }catch(e){
-    chatGecmis.push({rol:'koc', metin:'Bağlantı hatası: '+e.message});
+    const m = e.name==='AbortError' ? 'Yanıt gelmedi (zaman aşımı). Tekrar dener misin?' : ('Bağlantı hatası: '+e.message);
+    chatGecmis.push({rol:'koc', metin:m});
   }
 
   document.getElementById('chatMsgs').innerHTML = chatGecmis.map(m=>`<div class="msg ${m.rol==='kullanici'?'user':'koc'}">${escapeHtml(m.metin)}</div>`).join('');
