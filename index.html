@@ -335,6 +335,43 @@ body{
 .tg-day.blank{background:transparent;border:none;cursor:default}
 .tg-day.future{opacity:.28;cursor:default}
 .tg-day:not(.blank):not(.future):active{transform:scale(.9)}
+
+/* ===== AÇIK TEMA ===== */
+html[data-tema="acik"]{
+  --bg:#F5F7F9; --bg2:#FFFFFF; --card:#FFFFFF; --card2:#EFF3F6;
+  --line:#E2E8ED; --line2:#CFD8E0;
+  --txt:#16212C; --txt2:#54636F; --txt3:#8593A0;
+  --green:#0FA372; --green-d:#0A7855; --green-bg:rgba(15,163,114,.10);
+  --blue:#1B7BDC; --amber:#C98A12; --coral:#E0563A; --red:#D93F3F;
+  --on-green:#FFFFFF;
+  --hero-grad:linear-gradient(155deg,#FFFFFF 0%,#F7FBF9 55%,#F2F8F5 100%);
+  --card-grad:linear-gradient(180deg,#FFFFFF 0%,#FCFDFE 100%);
+}
+html[data-tema="acik"] .card,
+html[data-tema="acik"] .stat,
+html[data-tema="acik"] .hero,
+html[data-tema="acik"] .tg-hero{box-shadow:0 1px 3px rgba(20,35,50,.06)}
+html[data-tema="acik"] .hero::after,
+html[data-tema="acik"] .tg-hero::after{opacity:.6}
+
+/* Tema düğmesi */
+.tema-btn{margin-left:auto;width:38px;height:38px;border-radius:11px;border:1px solid var(--line);background:var(--card);color:var(--txt2);font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.15s;flex-shrink:0}
+.tema-btn:active{transform:scale(.92)}
+.head{display:flex;align-items:center}
+
+.tg-satir{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.tg-alev{font-size:26px;line-height:1;animation:tgPop .5s ease}
+@keyframes tgPop{0%{transform:scale(.5) rotate(-8deg);opacity:0}60%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+.tg-ilerleme{margin-top:14px}
+.tg-bar{height:8px;background:var(--card2);border-radius:99px;overflow:hidden;border:1px solid var(--line)}
+.tg-bar span{display:block;height:100%;background:linear-gradient(90deg,var(--green-d),var(--green));border-radius:99px;transition:width .5s ease}
+.tg-ilerleme-t{font-size:11.5px;color:var(--txt3);margin-top:7px}
+.tg-ilerleme-t b{color:var(--green);font-weight:700}
+.tg-rozetler{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+.tg-rozet{font-size:11px;font-weight:700;padding:4px 9px;border-radius:8px;background:var(--card2);color:var(--txt3);border:1px solid var(--line)}
+.tg-rozet.aktif{background:var(--green-bg);color:var(--green);border-color:var(--green-d)}
+.tg-day.clean{animation:tgCentik .28s ease}
+@keyframes tgCentik{0%{transform:scale(.75)}60%{transform:scale(1.12)}100%{transform:scale(1)}}
 </style>
 </head>
 <body>
@@ -358,6 +395,7 @@ body{
         <div class="head-greet" id="greet">Hoş geldin</div>
       </div>
     </div>
+    <button id="temaBtn" class="tema-btn" title="Tema değiştir"></button>
   </div>
 
   <div class="datestrip">
@@ -920,6 +958,10 @@ function donemYorum(mod, o){
   return parts.join(', ') + '.';
 }
 
+function cssRenk(ad, varsayilan){
+  try{ return getComputedStyle(document.documentElement).getPropertyValue(ad).trim() || varsayilan; }
+  catch(e){ return varsayilan; }
+}
 function drawKilo(){
   const el = document.getElementById('kiloChart');
   if(!el) return;
@@ -936,7 +978,7 @@ function drawKilo(){
       const meta = chart.getDatasetMeta(0);
       ctx.save();
       ctx.font='600 11px -apple-system,sans-serif';
-      ctx.fillStyle='#E8EDF1';
+      ctx.fillStyle=cssRenk('--txt','#E8EDF1');
       ctx.textAlign='center';
       meta.data.forEach((pt,i)=>{
         ctx.fillText(vals[i], pt.x, pt.y-12);
@@ -948,12 +990,12 @@ function drawKilo(){
   kiloChart = new Chart(el,{
     type:'line',
     data:{ labels:data.map(r=>{const[,m,d]=r.tarih.split('-');return d+'/'+m;}),
-      datasets:[{data:vals,borderColor:'#2BD89A',borderWidth:2.5,tension:.4,fill:true,
+      datasets:[{data:vals,borderColor:cssRenk('--green','#2BD89A'),borderWidth:2.5,tension:.4,fill:true,
         backgroundColor:(c)=>{const g=c.chart.ctx.createLinearGradient(0,0,0,230);g.addColorStop(0,'rgba(43,216,154,.25)');g.addColorStop(1,'rgba(43,216,154,0)');return g;},
-        pointBackgroundColor:'#2BD89A',pointBorderColor:'#0C1014',pointBorderWidth:2,pointRadius:5,pointHoverRadius:7}]},
+        pointBackgroundColor:cssRenk('--green','#2BD89A'),pointBorderColor:cssRenk('--card','#0C1014'),pointBorderWidth:2,pointRadius:5,pointHoverRadius:7}]},
     options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:18}},
       plugins:{legend:{display:false},tooltip:{enabled:false}},
-      scales:{y:{min:mn,max:mx,ticks:{color:'#75818D',font:{size:11},callback:v=>v+' kg'},grid:{color:'rgba(255,255,255,.04)'}},x:{ticks:{color:'#75818D',font:{size:11}},grid:{display:false}}}},
+      scales:{y:{min:mn,max:mx,ticks:{color:cssRenk('--txt3','#75818D'),font:{size:11},callback:v=>v+' kg'},grid:{color:cssRenk('--line','rgba(255,255,255,.04)')}},x:{ticks:{color:cssRenk('--txt3','#75818D'),font:{size:11}},grid:{display:false}}}},
     plugins:[etiketPlugin]
   });
 }
@@ -1582,6 +1624,30 @@ async function gonder(){
   scrollChat();
 }
 
+
+// ===== TEMA (koyu / açık) =====
+function temaUygula(t){
+  document.documentElement.setAttribute('data-tema', t);
+  const b = document.getElementById('temaBtn');
+  if(b) b.textContent = (t==='acik' ? '☾' : '☀');
+  try{ localStorage.setItem('koc_tema', t); }catch(e){}
+  // Grafik varsa temaya göre yeniden çiz
+  if(typeof curTab!=='undefined' && curTab==='ozet' && typeof ozetMod!=='undefined' && ozetMod==='gun' && cache.kiloTrend && cache.kiloTrend.length){
+    setTimeout(()=>{ try{ drawKilo(); }catch(e){} }, 60);
+  }
+}
+function temaBaslat(){
+  let t = 'koyu';
+  try{ t = localStorage.getItem('koc_tema') || 'koyu'; }catch(e){}
+  temaUygula(t);
+  const b = document.getElementById('temaBtn');
+  if(b) b.onclick = ()=>{
+    const yeni = (document.documentElement.getAttribute('data-tema')==='acik') ? 'koyu' : 'acik';
+    temaUygula(yeni);
+  };
+}
+temaBaslat();
+
 // ===== ŞİFRE KAPISI =====
 const KOC_SIFRE = "1791"; // şifreni buradan değiştir
 const KILIT_GUN = 30; // kaç gün hatırlasın
@@ -1630,6 +1696,18 @@ function tgEnIyi(){
   for(const k of arr){ if(prev && k===tgKaydir(prev,1)) run++; else run=1; best=Math.max(best,run); prev=k; }
   return best;
 }
+function tgAlev(n){
+  if(n<=0) return '';
+  if(n<3) return '✨';
+  if(n<7) return '🔥';
+  if(n<14) return '🔥🔥';
+  if(n<30) return '🔥🔥🔥';
+  return '👑';
+}
+const TG_HEDEFLER = [3,7,14,21,30,60,100,180,365];
+function tgSonraki(n){ return TG_HEDEFLER.find(x=>x>n) || null; }
+function tgKazanilan(n){ return TG_HEDEFLER.filter(x=>x<=n); }
+
 function tgMotiv(n){
   if(n<=0) return 'Bugünü çentikle, seri senden başlasın.';
   if(n<=2) return 'Başladın. Vücudun farkı hissetmeye başlıyor.';
@@ -1658,8 +1736,14 @@ function viewTemiz(){
   return `<div class="page on">
     <div class="tg-hero">
       <div class="tg-kick">Asitsiz içecek serisi</div>
-      <div><span class="tg-num">${seri}</span><span class="tg-unit">temiz gün</span></div>
+      <div class="tg-satir"><span class="tg-num">${seri}</span><span class="tg-unit">temiz gün</span><span class="tg-alev">${tgAlev(seri)}</span></div>
       <div class="tg-msg">${tgMotiv(seri)}</div>
+      ${(()=>{ const s=tgSonraki(seri); if(!s) return '';
+        const onceki = [0,...TG_HEDEFLER].filter(x=>x<s).pop();
+        const yuzde = Math.max(4, Math.round((seri-onceki)/(s-onceki)*100));
+        return `<div class="tg-ilerleme"><div class="tg-bar"><span style="width:${yuzde}%"></span></div>
+          <div class="tg-ilerleme-t">Sonraki hedef <b>${s} gün</b> · ${s-seri} gün kaldı</div></div>`; })()}
+      ${tgKazanilan(eniyi).length ? `<div class="tg-rozetler">${tgKazanilan(eniyi).map(x=>`<span class="tg-rozet${x<=seri?' aktif':''}">${x}g</span>`).join('')}</div>` : ''}
       <div class="tg-stat"><span>Toplam çentik <b>${toplam}</b></span><span>En iyi seri <b>${eniyi}</b></span></div>
       <div class="tg-toggle"><button id="tgBugun" class="${bugunTemiz?'on':''}">${bugunTemiz?'✓ Bugün temiz':'Bugünü çentikle'}</button></div>
     </div>
