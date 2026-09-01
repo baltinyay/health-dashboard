@@ -372,6 +372,31 @@ html[data-tema="acik"] .tg-hero::after{opacity:.6}
 .tg-rozet.aktif{background:var(--green-bg);color:var(--green);border-color:var(--green-d)}
 .tg-day.clean{animation:tgCentik .28s ease}
 @keyframes tgCentik{0%{transform:scale(.75)}60%{transform:scale(1.12)}100%{transform:scale(1)}}
+
+/* Temiz Gün — seçim butonları, şerit, lejant */
+.tg-soru{font-size:14px;font-weight:700;margin-bottom:14px}
+.tg-secim{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tg-btn{border:1.5px solid var(--line);background:var(--card2);color:var(--txt);border-radius:15px;padding:16px 10px;font-size:13.5px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;transition:.15s}
+.tg-em{font-size:24px;line-height:1}
+.tg-btn:active{transform:scale(.97)}
+.tg-evet.on{background:var(--green);border-color:var(--green);color:var(--on-green);box-shadow:0 4px 16px rgba(43,216,154,.25)}
+.tg-hayir.on{background:var(--coral);border-color:var(--coral);color:#fff;box-shadow:0 4px 16px rgba(255,122,89,.22)}
+.tg-ipucu{font-size:11px;color:var(--txt3);margin-top:10px;text-align:center}
+.tg-ileri{font-size:12.5px;color:var(--txt3);text-align:center;padding:8px 0}
+.tgs-strip{display:flex;gap:7px;overflow-x:auto;padding:2px 2px 12px;scrollbar-width:none;margin-bottom:2px}
+.tgs-strip::-webkit-scrollbar{display:none}
+.tgs-cell{flex:0 0 auto;text-align:center;cursor:pointer}
+.tgs-dot{width:38px;height:38px;border-radius:12px;background:var(--card2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:600;color:var(--txt2);transition:.15s}
+.tgs-dot.temiz{background:var(--green);border-color:var(--green);color:var(--on-green);font-weight:700}
+.tgs-dot.kacamak{background:var(--coral);border-color:var(--coral);color:#fff;font-weight:700}
+.tgs-dot.bugun{outline:2px solid var(--green);outline-offset:2px}
+.tgs-cell.sel .tgs-dot{transform:scale(1.06);border-color:var(--txt2)}
+.tgs-wd{font-size:9.5px;color:var(--txt3);margin-top:5px;font-weight:600}
+.tg-day.slip{background:var(--coral);border-color:var(--coral);color:#fff;font-weight:700}
+.tg-lejant{display:flex;gap:16px;justify-content:center;margin-top:12px;font-size:11px;color:var(--txt3)}
+.tg-lejant .lj{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.tg-lejant .lj.temiz{background:var(--green)}
+.tg-lejant .lj.kacamak{background:var(--coral)}
 </style>
 </head>
 <body>
@@ -429,7 +454,33 @@ html[data-tema="acik"] .tg-hero::after{opacity:.6}
 </div>
 
 <script type="module">
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.7?bundle';
+// Supabase kütüphanesi: bir CDN engellenirse/yavaşsa diğerini dene
+async function supabaseYukle(){
+  const kaynaklar = [
+    'https://esm.sh/@supabase/supabase-js@2.39.7?bundle',
+    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/+esm',
+    'https://unpkg.com/@supabase/supabase-js@2.39.7/dist/module/index.js'
+  ];
+  let sonHata;
+  for(const url of kaynaklar){
+    try{
+      const m = await import(/* @vite-ignore */ url);
+      if(m && m.createClient) return m.createClient;
+    }catch(e){ sonHata = e; }
+  }
+  throw sonHata || new Error('Kütüphane yüklenemedi');
+}
+
+let createClient;
+try{
+  createClient = await supabaseYukle();
+}catch(e){
+  const el = document.getElementById('pages');
+  if(el) el.innerHTML = '<div class="empty" style="padding:40px 20px">⚠️<div>Bağlantı kütüphanesi yüklenemedi.<br><span style="font-size:12px;opacity:.75">Farklı bir ağ (mobil veri / Wi-Fi) deneyip sayfayı yenile.</span></div></div>';
+  const w = document.getElementById('wrap'); if(w) w.style.display='';
+  const k = document.getElementById('kilit'); if(k) k.style.display='none';
+  throw e;
+}
 
 const SB_URL = 'https://lmmhcfqchbirklgrwwtj.supabase.co';
 const SB_KEY = 'sb_publishable_UTjaW9pbPjw0cyLFQqpT_g_Bs30WwxD';
@@ -483,7 +534,7 @@ let cy = new Date().getFullYear(), cm = new Date().getMonth();
 let calOpen = false;
 let kiloChart = null;
 
-const cache = { olcum:{}, ogun:{}, ant:{}, supp:{}, lab:[], kiloTrend:[], hedefler:[], hareketler:[], temiz:new Set(), loaded:false };
+const cache = { olcum:{}, ogun:{}, ant:{}, supp:{}, lab:[], kiloTrend:[], hedefler:[], hareketler:[], temiz:new Map(), loaded:false };
 
 // Kas grupları sırası (yeni grup eklenirse sona eklenir)
 const GRUP_SIRA = ['Göğüs','Triceps','Sırt','Biceps','Omuz','Bacak'];
@@ -522,9 +573,10 @@ function gununHedefi(ds){
 }
 
 async function fetchData(){
-  cache.olcum={}; cache.ogun={}; cache.ant={}; cache.supp={}; cache.lab=[]; cache.kiloTrend=[]; cache.hedefler=[]; cache.hareketler=[]; cache.temiz=new Set();
+  cache.olcum={}; cache.ogun={}; cache.ant={}; cache.supp={}; cache.lab=[]; cache.kiloTrend=[]; cache.hedefler=[]; cache.hareketler=[]; cache.temiz=new Map();
   try{
-    const [olcum, ogun, ant, supp, lab, hedefler, hareketler, temiz] = await Promise.all([
+    const zamanAsimi = new Promise((_,rej)=>setTimeout(()=>rej(new Error('zaman aşımı')), 20000));
+    const [olcum, ogun, ant, supp, lab, hedefler, hareketler, temiz] = await Promise.race([zamanAsimi, Promise.all([
       sb.from('gunluk_olcum').select('*'),
       sb.from('ogunler').select('*'),
       sb.from('antrenmanlar').select('*'),
@@ -533,7 +585,7 @@ async function fetchData(){
       sb.from('hedefler').select('*'),
       sb.from('hareketler').select('*'),
       sb.from('temiz_gunler').select('*'),
-    ]);
+    ])]);
     (olcum.data||[]).forEach(r=>cache.olcum[r.tarih]=r);
     (ogun.data||[]).forEach(r=>{ (cache.ogun[r.tarih]=cache.ogun[r.tarih]||[]).push(r); });
     (ant.data||[]).forEach(r=>cache.ant[r.tarih]=r);
@@ -542,12 +594,12 @@ async function fetchData(){
     cache.kiloTrend = (olcum.data||[]).filter(r=>r.kilo).sort((a,b)=>a.tarih.localeCompare(b.tarih));
     cache.hedefler = hedefler.data || [];
     cache.hareketler = hareketler.data || [];
-    (temiz.data||[]).forEach(r=>cache.temiz.add(r.tarih));
+    (temiz.data||[]).forEach(r=>cache.temiz.set(r.tarih, r.temiz!==false));
   }catch(e){
     console.error(e);
     // Veri çekilemedi — kullanıcıya görünür uyarı
     const p = document.getElementById('pages');
-    if(p && !cache.loaded) p.innerHTML = '<div class="empty" style="padding:40px 20px">⚠️<div>Veriler yüklenemedi. İnternetini kontrol edip sayfayı yenile.</div></div>';
+    if(p) p.innerHTML = '<div class="empty" style="padding:40px 20px">⚠️<div>Veriler yüklenemedi.<br><span style="font-size:12px;opacity:.75">Farklı bir ağ deneyip sayfayı yenile.</span></div></div>';
   }
   cache.loaded = true;
 }
@@ -1649,7 +1701,7 @@ function temaBaslat(){
 temaBaslat();
 
 // ===== ŞİFRE KAPISI =====
-const KOC_SIFRE = "243803"; // şifreni buradan değiştir
+const KOC_SIFRE = "1791"; // şifreni buradan değiştir
 const KILIT_GUN = 30; // kaç gün hatırlasın
 
 function kilitAc(){
@@ -1686,16 +1738,26 @@ let tgCy = new Date().getFullYear(), tgCm = new Date().getMonth();
 function tgIso(d){ return d.toISOString().slice(0,10); }
 function tgKaydir(iso,n){ const d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+n); return tgIso(d); }
 function tgBugun(){ return new Date().toISOString().slice(0,10); }
+function tgDurum(ds){ return cache.temiz.has(ds) ? (cache.temiz.get(ds) ? 'temiz' : 'kacamak') : null; }
+
+// Seri: bugünden geriye; temiz gün sayar, "içtim" veya boş gün kırar (bugün boşsa kırmaz)
 function tgSeri(){
-  const s=cache.temiz; let g=tgBugun();
-  if(!s.has(g)) g=tgKaydir(g,-1);      // bugün boşsa seri düşmez
-  let n=0; while(s.has(g)){ n++; g=tgKaydir(g,-1); } return n;
+  let g = tgBugun(), n = 0;
+  if(tgDurum(g)!=='temiz') g = tgKaydir(g,-1);
+  while(tgDurum(g)==='temiz'){ n++; g = tgKaydir(g,-1); }
+  return n;
 }
 function tgEnIyi(){
-  const arr=[...cache.temiz].sort(); let best=0,run=0,prev=null;
-  for(const k of arr){ if(prev && k===tgKaydir(prev,1)) run++; else run=1; best=Math.max(best,run); prev=k; }
+  const arr=[...cache.temiz.entries()].filter(([,v])=>v).map(([k])=>k).sort();
+  let best=0,run=0,prev=null;
+  for(const k of arr){
+    if(prev && k===tgKaydir(prev,1)) run++; else run=1;
+    best=Math.max(best,run); prev=k;
+  }
   return best;
 }
+function tgToplam(){ return [...cache.temiz.values()].filter(Boolean).length; }
+
 function tgAlev(n){
   if(n<=0) return '';
   if(n<3) return '✨';
@@ -1716,65 +1778,121 @@ function tgMotiv(n){
   if(n<=29) return n+' gün! Artık alışkanlığa dönüşüyor.';
   return 'Bir ayı devirdin. Asitli içecek artık varsayılanın değil. 🔥';
 }
+
 function viewTemiz(){
-  const seri=tgSeri(), toplam=cache.temiz.size, eniyi=Math.max(tgEnIyi(),seri);
-  const bugun=tgBugun(), bugunTemiz=cache.temiz.has(bugun);
-  const ilkGun=(new Date(tgCy,tgCm,1).getDay()+6)%7;  // Pzt=0
+  const seri=tgSeri(), toplam=tgToplam(), eniyi=Math.max(tgEnIyi(),seri);
+  const bugun=tgBugun();
+  const secili = selDate;                       // üstteki tarih şeridiyle aynı gün
+  const durum = tgDurum(secili);
+  const gelecek = secili > bugun;
+
+  // 14 günlük şerit
+  let serit='';
+  for(let i=13;i>=0;i--){
+    const ds=tgKaydir(bugun,-i);
+    const d=tgDurum(ds);
+    let cls='tgs-cell';
+    if(ds===secili) cls+=' sel';
+    let nokta='tgs-dot';
+    if(d==='temiz') nokta+=' temiz'; else if(d==='kacamak') nokta+=' kacamak';
+    if(ds===bugun) nokta+=' bugun';
+    const gun=new Date(ds+'T12:00:00');
+    serit+=`<div class="${cls}" data-d="${ds}"><div class="${nokta}">${gun.getDate()}</div><div class="tgs-wd">${DOW[(gun.getDay()+6)%7]}</div></div>`;
+  }
+
+  // Aylık takvim
+  const ilkGun=(new Date(tgCy,tgCm,1).getDay()+6)%7;
   const gunSayi=new Date(tgCy,tgCm+1,0).getDate();
   const wd=['Pt','Sa','Ça','Pe','Cu','Ct','Pz'];
-  const aylar=['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
   let hucreler='';
   for(let i=0;i<ilkGun;i++) hucreler+='<div class="tg-day blank"></div>';
   for(let g=1;g<=gunSayi;g++){
     const ds=`${tgCy}-${String(tgCm+1).padStart(2,'0')}-${String(g).padStart(2,'0')}`;
+    const d=tgDurum(ds);
     let cls='tg-day';
-    if(cache.temiz.has(ds)) cls+=' clean';
+    if(d==='temiz') cls+=' clean'; else if(d==='kacamak') cls+=' slip';
     if(ds===bugun) cls+=' today';
     if(ds>bugun) cls+=' future';
     hucreler+=`<div class="${cls}" data-d="${ds}">${g}</div>`;
   }
+
+  const gunEtiket = secili===bugun ? 'Bugün' : `${fmtDay(secili)}`;
+
   return `<div class="page on">
     <div class="tg-hero">
       <div class="tg-kick">Asitsiz içecek serisi</div>
       <div class="tg-satir"><span class="tg-num">${seri}</span><span class="tg-unit">temiz gün</span><span class="tg-alev">${tgAlev(seri)}</span></div>
       <div class="tg-msg">${tgMotiv(seri)}</div>
       ${(()=>{ const s=tgSonraki(seri); if(!s) return '';
-        const onceki = [0,...TG_HEDEFLER].filter(x=>x<s).pop();
-        const yuzde = Math.max(4, Math.round((seri-onceki)/(s-onceki)*100));
+        const onceki=[0,...TG_HEDEFLER].filter(x=>x<s).pop();
+        const yuzde=Math.max(4,Math.round((seri-onceki)/(s-onceki)*100));
         return `<div class="tg-ilerleme"><div class="tg-bar"><span style="width:${yuzde}%"></span></div>
           <div class="tg-ilerleme-t">Sonraki hedef <b>${s} gün</b> · ${s-seri} gün kaldı</div></div>`; })()}
-      ${tgKazanilan(eniyi).length ? `<div class="tg-rozetler">${tgKazanilan(eniyi).map(x=>`<span class="tg-rozet${x<=seri?' aktif':''}">${x}g</span>`).join('')}</div>` : ''}
-      <div class="tg-stat"><span>Toplam çentik <b>${toplam}</b></span><span>En iyi seri <b>${eniyi}</b></span></div>
-      <div class="tg-toggle"><button id="tgBugun" class="${bugunTemiz?'on':''}">${bugunTemiz?'✓ Bugün temiz':'Bugünü çentikle'}</button></div>
+      ${tgKazanilan(eniyi).length?`<div class="tg-rozetler">${tgKazanilan(eniyi).map(x=>`<span class="tg-rozet${x<=seri?' aktif':''}">${x}g</span>`).join('')}</div>`:''}
+      <div class="tg-stat"><span>Toplam temiz <b>${toplam}</b></span><span>En iyi seri <b>${eniyi}</b></span></div>
     </div>
+
+    <div class="tgs-strip">${serit}</div>
+
+    <div class="card">
+      <div class="tg-soru">${gunEtiket} asitli içecek içtin mi?</div>
+      ${gelecek ? '<div class="tg-ileri">İleri bir gün seçili — geçmiş veya bugün için işaretleyebilirsin.</div>' : `
+      <div class="tg-secim">
+        <button class="tg-btn tg-evet${durum==='temiz'?' on':''}" data-v="1"><span class="tg-em">💧</span>Temiz kaldım</button>
+        <button class="tg-btn tg-hayir${durum==='kacamak'?' on':''}" data-v="0"><span class="tg-em">🥤</span>İçtim</button>
+      </div>
+      <div class="tg-ipucu">Aynı butona tekrar basarsan işareti kaldırırsın.</div>`}
+    </div>
+
     <div class="card">
       <div class="tg-calhead">
         <div class="calnav"><button data-mo="-1">‹</button></div>
-        <div class="m">${aylar[tgCm]} ${tgCy}</div>
+        <div class="m">${MN[tgCm]} ${tgCy}</div>
         <div class="calnav"><button data-mo="1">›</button></div>
       </div>
       <div class="tg-grid">${wd.map(d=>`<div class="tg-wd">${d}</div>`).join('')}${hucreler}</div>
-      <div style="font-size:11px;color:var(--txt3);margin-top:12px;text-align:center">Geçmiş bir güne dokunarak da çentik atabilir / geri alabilirsin.</div>
+      <div class="tg-lejant"><span><i class="lj temiz"></i>Temiz</span><span><i class="lj kacamak"></i>İçtim</span></div>
     </div>
   </div>`;
 }
+
 function bindTemiz(){
-  const b=document.getElementById('tgBugun');
-  if(b) b.onclick=()=>tgToggle(tgBugun());
-  document.querySelectorAll('.tg-day:not(.blank):not(.future)').forEach(el=>{ el.onclick=()=>tgToggle(el.dataset.d); });
+  // Seçim butonları
+  document.querySelectorAll('.tg-btn').forEach(el=>{
+    el.onclick=()=> tgIsaretle(selDate, el.dataset.v==='1');
+  });
+  // 14 günlük şerit → günü seç
+  document.querySelectorAll('.tgs-cell').forEach(el=>{
+    el.onclick=()=>{ selDate=el.dataset.d; render(); };
+  });
+  // Takvim günleri → doğrudan temiz/kaldır
+  document.querySelectorAll('.tg-day:not(.blank):not(.future)').forEach(el=>{
+    el.onclick=()=>{ selDate=el.dataset.d; render(); };
+  });
+  // Ay değiştir
   document.querySelectorAll('.tg-calhead .calnav button').forEach(el=>{
     el.onclick=()=>{ tgCm+=parseInt(el.dataset.mo,10); if(tgCm<0){tgCm=11;tgCy--;} if(tgCm>11){tgCm=0;tgCy++;} render(); };
   });
 }
-async function tgToggle(ds){
-  const vardi=cache.temiz.has(ds);
-  if(vardi) cache.temiz.delete(ds); else cache.temiz.add(ds);  // iyimser güncelle
+
+async function tgIsaretle(ds, temizMi){
+  const oncekiVar = cache.temiz.has(ds);
+  const onceki = cache.temiz.get(ds);
+  const ayni = oncekiVar && onceki===temizMi;
+
+  if(ayni) cache.temiz.delete(ds); else cache.temiz.set(ds, temizMi);   // iyimser güncelle
   render();
+
   try{
-    if(vardi){ const {error}=await sb.from('temiz_gunler').delete().eq('tarih',ds); if(error) throw error; }
-    else { const {error}=await sb.from('temiz_gunler').upsert({tarih:ds},{onConflict:'tarih'}); if(error) throw error; }
+    if(ayni){
+      const {error}=await sb.from('temiz_gunler').delete().eq('tarih',ds);
+      if(error) throw error;
+    }else{
+      const {error}=await sb.from('temiz_gunler').upsert({tarih:ds, temiz:temizMi},{onConflict:'tarih'});
+      if(error) throw error;
+    }
   }catch(e){
-    if(vardi) cache.temiz.add(ds); else cache.temiz.delete(ds);  // geri al
+    if(oncekiVar) cache.temiz.set(ds,onceki); else cache.temiz.delete(ds);  // geri al
     render(); alert('Kayıt hatası: '+(e.message||e));
   }
 }
