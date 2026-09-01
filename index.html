@@ -312,6 +312,29 @@ body{
 .spor-gun-head{display:flex;justify-content:space-between;align-items:center;padding:12px 0;cursor:pointer}
 .spor-gun-head:active{opacity:.7}
 .spor-gun-detay{padding:4px 0 12px}
+/* --- Temiz Gün modülü --- */
+.tg-hero{background:var(--hero-grad);border:1px solid var(--line);border-radius:var(--radius);padding:22px 20px;position:relative;overflow:hidden;margin-bottom:14px}
+.tg-hero::after{content:"";position:absolute;right:-30px;top:-40px;width:170px;height:170px;background:radial-gradient(circle,var(--green-bg),transparent 65%);pointer-events:none}
+.tg-kick{font-size:12px;color:var(--txt2);font-weight:600}
+.tg-num{font-size:64px;font-weight:800;line-height:.95;color:var(--green);letter-spacing:-1px}
+.tg-unit{font-size:15px;color:var(--txt2);font-weight:500;margin-left:8px}
+.tg-msg{font-size:13.5px;color:var(--txt2);margin-top:10px;min-height:20px}
+.tg-stat{display:flex;gap:18px;margin-top:14px;font-size:12px;color:var(--txt3)}
+.tg-stat b{color:var(--txt);font-weight:700;font-size:14px}
+.tg-toggle{margin-top:16px}
+.tg-toggle button{width:100%;border:1px solid var(--line);background:var(--card2);color:var(--txt);border-radius:var(--radius-sm);padding:14px;font-size:14px;font-weight:700;cursor:pointer;transition:.15s}
+.tg-toggle button.on{background:var(--green);border-color:var(--green);color:var(--on-green);box-shadow:0 4px 16px rgba(43,216,154,.25)}
+.tg-toggle button:active{transform:scale(.98)}
+.tg-calhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.tg-calhead .m{font-size:14px;font-weight:700}
+.tg-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.tg-wd{font-size:10px;color:var(--txt3);text-align:center;font-weight:600;padding-bottom:2px}
+.tg-day{aspect-ratio:1;border-radius:10px;background:var(--card2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--txt2);cursor:pointer;transition:.12s;user-select:none}
+.tg-day.clean{background:var(--green);border-color:var(--green);color:var(--on-green);font-weight:700}
+.tg-day.today{outline:2px solid var(--green);outline-offset:1px}
+.tg-day.blank{background:transparent;border:none;cursor:default}
+.tg-day.future{opacity:.28;cursor:default}
+.tg-day:not(.blank):not(.future):active{transform:scale(.9)}
 </style>
 </head>
 <body>
@@ -394,6 +417,7 @@ const I = {
   food:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 2v7c0 1.1.9 2 2 2h0a2 2 0 002-2V2"/><path d="M5 2v20"/><path d="M19 2v20M15 2c0 4 4 4 4 8"/></svg>',
   dumbbell:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6v12M18 6v12M3 9v6M21 9v6M6 12h12"/></svg>',
   pill:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="8" rx="4"/><path d="M12 8v8"/></svg>',
+  drop:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.6C12 2.6 6 8.9 6 13.8a6 6 0 0 0 12 0C18 8.9 12 2.6 12 2.6Z"/></svg>',
   lab:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 2h6M10 2v6l-4 9a2 2 0 002 3h8a2 2 0 002-3l-4-9V2"/></svg>',
   brain:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3a3 3 0 00-3 3 3 3 0 00-2 5 3 3 0 002 5 3 3 0 006 0V6a3 3 0 00-3-3z"/></svg>',
   run:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13" cy="4" r="2"/><path d="M8 21l3-6 3 2 1 4M11 15l-2-5 4-2 2 3 3 1"/></svg>',
@@ -412,6 +436,7 @@ const TABS = [
   {id:'ant', name:'Antrenman', ic:I.dumbbell},
   {id:'supp', name:'Supplement', ic:I.pill},
   {id:'lab', name:'Tahlil', ic:I.lab},
+  {id:'temiz', name:'Temiz', ic:I.drop},
 ];
 
 let selDate = new Date().toISOString().slice(0,10);
@@ -420,7 +445,7 @@ let cy = new Date().getFullYear(), cm = new Date().getMonth();
 let calOpen = false;
 let kiloChart = null;
 
-const cache = { olcum:{}, ogun:{}, ant:{}, supp:{}, lab:[], kiloTrend:[], hedefler:[], hareketler:[], loaded:false };
+const cache = { olcum:{}, ogun:{}, ant:{}, supp:{}, lab:[], kiloTrend:[], hedefler:[], hareketler:[], temiz:new Set(), loaded:false };
 
 // Kas grupları sırası (yeni grup eklenirse sona eklenir)
 const GRUP_SIRA = ['Göğüs','Triceps','Sırt','Biceps','Omuz','Bacak'];
@@ -459,9 +484,9 @@ function gununHedefi(ds){
 }
 
 async function fetchData(){
-  cache.olcum={}; cache.ogun={}; cache.ant={}; cache.supp={}; cache.lab=[]; cache.kiloTrend=[]; cache.hedefler=[]; cache.hareketler=[];
+  cache.olcum={}; cache.ogun={}; cache.ant={}; cache.supp={}; cache.lab=[]; cache.kiloTrend=[]; cache.hedefler=[]; cache.hareketler=[]; cache.temiz=new Set();
   try{
-    const [olcum, ogun, ant, supp, lab, hedefler, hareketler] = await Promise.all([
+    const [olcum, ogun, ant, supp, lab, hedefler, hareketler, temiz] = await Promise.all([
       sb.from('gunluk_olcum').select('*'),
       sb.from('ogunler').select('*'),
       sb.from('antrenmanlar').select('*'),
@@ -469,6 +494,7 @@ async function fetchData(){
       sb.from('tahliller').select('*'),
       sb.from('hedefler').select('*'),
       sb.from('hareketler').select('*'),
+      sb.from('temiz_gunler').select('*'),
     ]);
     (olcum.data||[]).forEach(r=>cache.olcum[r.tarih]=r);
     (ogun.data||[]).forEach(r=>{ (cache.ogun[r.tarih]=cache.ogun[r.tarih]||[]).push(r); });
@@ -478,6 +504,7 @@ async function fetchData(){
     cache.kiloTrend = (olcum.data||[]).filter(r=>r.kilo).sort((a,b)=>a.tarih.localeCompare(b.tarih));
     cache.hedefler = hedefler.data || [];
     cache.hareketler = hareketler.data || [];
+    (temiz.data||[]).forEach(r=>cache.temiz.add(r.tarih));
   }catch(e){
     console.error(e);
     // Veri çekilemedi — kullanıcıya görünür uyarı
@@ -563,6 +590,7 @@ function render(){
   else if(curTab==='ant'){ p.innerHTML = viewAnt(); bindAnt(); }
   else if(curTab==='supp'){ p.innerHTML = viewSupp(); bindSupp(); }
   else if(curTab==='lab'){ p.innerHTML = viewLab(); bindLab(); }
+  else if(curTab==='temiz'){ p.innerHTML = viewTemiz(); bindTemiz(); }
   if(curTab==='ozet' && ozetMod==='gun' && cache.kiloTrend.length) setTimeout(drawKilo,50);
 }
 
@@ -1587,6 +1615,86 @@ if(document.cookie.split(';').some(c=>c.trim().startsWith('koc_giris=1'))){
     setTimeout(()=>ki.focus(), 300);
   }
 }
+/* ===== Temiz Gün — asitsiz içecek serisi ===== */
+let tgCy = new Date().getFullYear(), tgCm = new Date().getMonth();
+function tgIso(d){ return d.toISOString().slice(0,10); }
+function tgKaydir(iso,n){ const d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+n); return tgIso(d); }
+function tgBugun(){ return new Date().toISOString().slice(0,10); }
+function tgSeri(){
+  const s=cache.temiz; let g=tgBugun();
+  if(!s.has(g)) g=tgKaydir(g,-1);      // bugün boşsa seri düşmez
+  let n=0; while(s.has(g)){ n++; g=tgKaydir(g,-1); } return n;
+}
+function tgEnIyi(){
+  const arr=[...cache.temiz].sort(); let best=0,run=0,prev=null;
+  for(const k of arr){ if(prev && k===tgKaydir(prev,1)) run++; else run=1; best=Math.max(best,run); prev=k; }
+  return best;
+}
+function tgMotiv(n){
+  if(n<=0) return 'Bugünü çentikle, seri senden başlasın.';
+  if(n<=2) return 'Başladın. Vücudun farkı hissetmeye başlıyor.';
+  if(n<=6) return n+' gün oldu — şeker isteği bu aralıkta düşer.';
+  if(n<=13) return 'Bir haftayı geçtin. Diş minen bunu hak ediyordu.';
+  if(n<=29) return n+' gün! Artık alışkanlığa dönüşüyor.';
+  return 'Bir ayı devirdin. Asitli içecek artık varsayılanın değil. 🔥';
+}
+function viewTemiz(){
+  const seri=tgSeri(), toplam=cache.temiz.size, eniyi=Math.max(tgEnIyi(),seri);
+  const bugun=tgBugun(), bugunTemiz=cache.temiz.has(bugun);
+  const ilkGun=(new Date(tgCy,tgCm,1).getDay()+6)%7;  // Pzt=0
+  const gunSayi=new Date(tgCy,tgCm+1,0).getDate();
+  const wd=['Pt','Sa','Ça','Pe','Cu','Ct','Pz'];
+  const aylar=['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  let hucreler='';
+  for(let i=0;i<ilkGun;i++) hucreler+='<div class="tg-day blank"></div>';
+  for(let g=1;g<=gunSayi;g++){
+    const ds=`${tgCy}-${String(tgCm+1).padStart(2,'0')}-${String(g).padStart(2,'0')}`;
+    let cls='tg-day';
+    if(cache.temiz.has(ds)) cls+=' clean';
+    if(ds===bugun) cls+=' today';
+    if(ds>bugun) cls+=' future';
+    hucreler+=`<div class="${cls}" data-d="${ds}">${g}</div>`;
+  }
+  return `<div class="page on">
+    <div class="tg-hero">
+      <div class="tg-kick">Asitsiz içecek serisi</div>
+      <div><span class="tg-num">${seri}</span><span class="tg-unit">temiz gün</span></div>
+      <div class="tg-msg">${tgMotiv(seri)}</div>
+      <div class="tg-stat"><span>Toplam çentik <b>${toplam}</b></span><span>En iyi seri <b>${eniyi}</b></span></div>
+      <div class="tg-toggle"><button id="tgBugun" class="${bugunTemiz?'on':''}">${bugunTemiz?'✓ Bugün temiz':'Bugünü çentikle'}</button></div>
+    </div>
+    <div class="card">
+      <div class="tg-calhead">
+        <div class="calnav"><button data-mo="-1">‹</button></div>
+        <div class="m">${aylar[tgCm]} ${tgCy}</div>
+        <div class="calnav"><button data-mo="1">›</button></div>
+      </div>
+      <div class="tg-grid">${wd.map(d=>`<div class="tg-wd">${d}</div>`).join('')}${hucreler}</div>
+      <div style="font-size:11px;color:var(--txt3);margin-top:12px;text-align:center">Geçmiş bir güne dokunarak da çentik atabilir / geri alabilirsin.</div>
+    </div>
+  </div>`;
+}
+function bindTemiz(){
+  const b=document.getElementById('tgBugun');
+  if(b) b.onclick=()=>tgToggle(tgBugun());
+  document.querySelectorAll('.tg-day:not(.blank):not(.future)').forEach(el=>{ el.onclick=()=>tgToggle(el.dataset.d); });
+  document.querySelectorAll('.tg-calhead .calnav button').forEach(el=>{
+    el.onclick=()=>{ tgCm+=parseInt(el.dataset.mo,10); if(tgCm<0){tgCm=11;tgCy--;} if(tgCm>11){tgCm=0;tgCy++;} render(); };
+  });
+}
+async function tgToggle(ds){
+  const vardi=cache.temiz.has(ds);
+  if(vardi) cache.temiz.delete(ds); else cache.temiz.add(ds);  // iyimser güncelle
+  render();
+  try{
+    if(vardi){ const {error}=await sb.from('temiz_gunler').delete().eq('tarih',ds); if(error) throw error; }
+    else { const {error}=await sb.from('temiz_gunler').upsert({tarih:ds},{onConflict:'tarih'}); if(error) throw error; }
+  }catch(e){
+    if(vardi) cache.temiz.add(ds); else cache.temiz.delete(ds);  // geri al
+    render(); alert('Kayıt hatası: '+(e.message||e));
+  }
+}
+
 </script>
 </body>
 </html>
